@@ -1,12 +1,12 @@
 # Progress
 
-Overall: **100%**
+Overall: **95%** (waiting on the first automatic release)
 
-The lab runs in the browser, the three example fabrics converge, Vitest is green locally (12 tests), and a Debian package was built and inspected on this machine. Windows NSIS is defined in the release workflow and was not built here (this environment is Linux).
+The lab runs in the browser, the three example fabrics converge, and Vitest is green locally. Release automation is on this branch: merges to `main` publish the next patch (first release `v0.1.0`), and `cursor/*` pull requests merge themselves after CI and call the release workflow directly so a `GITHUB_TOKEN` merge still produces the release.
 
 ## Milestones
 
-- [x] **1. Packaging** — Vite static bundle (`npm run build`). Tauri v2 app. Local `.deb` verified: `nxos-evpn-lab_0.1.0_amd64.deb` (Package `nxos-evpn-lab`, Depends `libwebkit2gtk-4.1-0`, `libgtk-3-0`, binary `usr/bin/nxos-evpn-sim`). GitHub Actions: `.github/workflows/ci.yml` (tests, web bundle, `.deb`) and `.github/workflows/release.yml` (tag `v*` attaches web zip, NSIS `.exe`, and `.deb`). Windows installer was not built in this Linux environment.
+- [x] **1. Packaging** — Vite static bundle. Tauri v2. Local `.deb` inspected previously. CI builds the web bundle and `.deb`. Releases: `.github/workflows/release.yml` (called), `.github/workflows/release-dispatch.yml` (push to `main` and `v*` tags), `.github/workflows/automerge.yml` (`cursor/*` merges after CI and calls Release). Windows NSIS is built only in the release workflow.
 - [x] **2. Topology UI** — drag-and-drop canvas, named interfaces, JSON export/import, `localStorage`, and the three example fabrics (clos iBGP, 5-stage eBGP, Multi-Site with vPC and ESI).
 - [x] **3. NX-OS CLI** — modes and prompts, `?`, Tab, abbreviations, `no` forms, feature gating, `show running-config`, `copy run start`, and pipes (`include`, `exclude`, `begin`, `section`, `count`).
 - [x] **4. Control plane** — interface/link state, OSPF, iBGP route reflection and eBGP (allowas-in, disable-peer-as-check, next-hop unchanged, retain route-target all), EVPN types 1–5 with `rd auto` / `route-target auto`, VXLAN NVE, anycast gateway, vPC, ESI modulus DF, Multi-Site re-origination, host ping/ARP.
@@ -24,3 +24,4 @@ The lab runs in the browser, the three example fabrics converge, Vitest is green
 
 - 2026-10-28: NX-OS 10.x research. Control plane, CLI, and example fabrics.
 - 2026-10-29: Topology UI, Tauri `.deb` (Rust 1.99; 1.83 cannot build Tauri 2.7), screenshots, README.
+- 2026-10-29: Automatic patch releases on merge to main, and auto-merge for `cursor/*` once CI passes. The auto-merge workflow calls Release via `workflow_call` because a `GITHUB_TOKEN` merge does not emit `push`.

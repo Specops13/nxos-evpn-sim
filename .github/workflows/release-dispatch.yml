@@ -1,0 +1,27 @@
+# Starts a release for events that do fire: a person merging or pushing main,
+# a manual v* tag, or a workflow_dispatch. cursor/* auto-merges do not land here
+# because GITHUB_TOKEN merges do not emit push; automerge.yml calls Release itself.
+name: Release dispatch
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  call:
+    name: Publish
+    if: >
+      github.ref_type == 'tag' ||
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event.head_commit.message != null && !startsWith(github.event.head_commit.message, 'chore: release v'))
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      sha: ${{ github.sha }}
+    secrets: inherit

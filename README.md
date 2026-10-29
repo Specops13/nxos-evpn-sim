@@ -39,7 +39,9 @@ npm run tauri build -- --bundles deb     # Linux
 npm run tauri build -- --bundles nsis    # Windows
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) runs the unit tests, builds the web bundle, and builds the `.deb`. `.github/workflows/release.yml` runs on tags matching `v*` and attaches the web zip, the Windows NSIS `.exe`, and the `.deb` to the GitHub Release.
+GitHub Actions (`.github/workflows/ci.yml`) runs the unit tests, builds the web bundle, and builds the `.deb` on every pull request.
+
+Every merge to `main` publishes a GitHub Release. The first one is `v0.1.0` (the version already in the repo). Each later merge bumps the patch (`v0.1.1`, `v0.1.2`, …) and writes that version back to `package.json`, `package-lock.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and `src-tauri/Cargo.lock`. The release attaches the Windows NSIS `.exe`, the Debian `.deb`, and `nxos-evpn-lab-web.zip`. Pull requests from `cursor/*` are squash-merged by `.github/workflows/automerge.yml` after CI succeeds, and that same workflow calls the release workflow directly. A merge made with the Actions token does not emit a `push` event, so waiting for a tag or a main push would never start the release. Pushing a `v*` tag yourself still builds that exact version.
 
 ## Example fabrics
 
