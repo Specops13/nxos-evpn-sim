@@ -1,57 +1,173 @@
+# Reusable release build. Callers pass the commit to publish.
+#
+# Do not add a push trigger here. Merges performed with GITHUB_TOKEN do not
+# emit push events, and a push trigger plus workflow_call would publish twice
+# when a person merges by hand. release-dispatch.yml owns push and tag events.
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_call:
+    inputs:
+      sha:
+        description: Commit to build and tag
+        type: string
+        required: true
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
 jobs:
-  publish:
-    name: ${{ matrix.platform }}
+  prepare:
+    name: Choose version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      sha: ${{ steps.meta.outputs.sha }}
+      publish: ${{ steps.meta.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve version and tag
+        id: meta
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          git fetch origin main --tags --force
+          git checkout --detach "$TARGET"
+
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            mapfile -t TAGS < <(git tag -l 'v[0-9]*')
+            PKG=$(node -p "require('./package.json').version")
+            TAG_LIST=""
+            if [ "${#TAGS[@]}" -gt 0 ]; then
+              TAG_LIST="${TAGS[*]}"
+            fi
+            export PKG TAG_LIST
+            VERSION=$(node --input-type=module -e '
+              import { nextReleaseVersion } from "./scripts/next-version.js";
+              const tags = (process.env.TAG_LIST || "").split(/\s+/).filter(Boolean);
+              console.log(nextReleaseVersion(process.env.PKG, tags));
+            ')
+            CURRENT=$(git rev-parse HEAD)
+            MAIN=$(git rev-parse origin/main)
+            if [ "$CURRENT" != "$MAIN" ]; then
+              echo "Refusing to version $TARGET because origin/main is $MAIN"
+              exit 1
+            fi
+            if [ "$PKG" != "$VERSION" ]; then
+              node --input-type=module -e '
+                import { setProjectVersion } from "./scripts/set-version.js";
+                setProjectVersion(process.cwd(), process.argv[1]);
+              ' "$VERSION"
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+              git commit -m "chore: release v${VERSION}"
+              git push origin HEAD:main
+            fi
+          fi
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            echo "Release v${VERSION} already exists"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: ${{ matrix.name }}
+    needs: prepare
+    if: needs.prepare.outputs.publish == 'true'
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: ubuntu-24.04
-            args: --bundles deb
-          - platform: windows-latest
-            args: --bundles nsis
-    runs-on: ${{ matrix.platform }}
+          - name: Debian package
+            os: ubuntu-24.04
+            bundles: deb
+            artifact: release-deb
+            paths: |
+              src-tauri/target/release/bundle/deb/*.deb
+          - name: Windows installer
+            os: windows-latest
+            bundles: nsis
+            artifact: release-exe
+            paths: |
+              src-tauri/target/release/bundle/nsis/*.exe
+          - name: Web bundle
+            os: ubuntu-24.04
+            bundles: none
+            artifact: release-web
+            paths: |
+              nxos-evpn-lab-web.zip
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+        if: matrix.bundles != 'none'
       - name: Install Tauri Linux dependencies
-        if: matrix.platform == 'ubuntu-24.04'
+        if: matrix.bundles == 'deb'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
       - run: npm ci
-      - name: Build and attach installers
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: NX-OS EVPN Lab ${{ github.ref_name }}
-          releaseBody: |
-            Browser bundle, Windows NSIS installer (.exe), and Debian package for the NX-OS EVPN / VXLAN lab.
-          releaseDraft: false
-          prerelease: false
-          args: ${{ matrix.args }}
+      - name: Build desktop bundle
+        if: matrix.bundles != 'none'
+        run: npx tauri build --bundles ${{ matrix.bundles }}
       - name: Zip the web bundle
-        if: matrix.platform == 'ubuntu-24.04'
-        run: (cd dist && zip -r ../nxos-evpn-lab-web.zip .)
-      - name: Attach the static web bundle
-        if: matrix.platform == 'ubuntu-24.04'
-        uses: softprops/action-gh-release@v2
+        if: matrix.bundles == 'none'
+        run: |
+          npm run build
+          (cd dist && zip -r ../nxos-evpn-lab-web.zip .)
+      - uses: actions/upload-artifact@v4
         with:
-          files: nxos-evpn-lab-web.zip
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.paths }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: [prepare, build]
+    if: needs.prepare.outputs.publish == 'true' && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+      - name: Create release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          set -euo pipefail
+          find release-assets -type f -print
+          notes=$(printf 'Automated release of NX-OS EVPN Lab %s.\n\nCommit: %s\n\nAssets: Windows NSIS installer, Debian package, and the static web bundle.' "v${VERSION}" "${SHA}")
+          mapfile -t files < <(find release-assets -type f | sort)
+          gh release create "v${VERSION}" "${files[@]}" \
+            --target "${SHA}" \
+            --title "v${VERSION}" \
+            --notes "${notes}"
+          gh release view "v${VERSION}" --json url,assets --jq '{url: .url, assets: [.assets[].name]}'
