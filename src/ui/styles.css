@@ -23,7 +23,7 @@ button { cursor: pointer; }
 
 .app {
   display: grid;
-  grid-template-columns: 248px 1fr 460px;
+  grid-template-columns: 240px 1fr 640px;
   grid-template-rows: 52px 1fr;
   height: 100%;
 }

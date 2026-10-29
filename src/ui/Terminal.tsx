@@ -28,7 +28,7 @@ export function DeviceTerminal({
     const term = new Terminal({
       cursorBlink: true,
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-      fontSize: 13,
+      fontSize: 12,
       theme: {
         background: '#0b1016',
         foreground: '#d5deE8',

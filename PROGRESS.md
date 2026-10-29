@@ -1,19 +1,26 @@
 # Progress
 
-Overall: **45%**
+Overall: **100%**
 
-The control-plane engine and NX-OS CLI parser are in the tree. The three example fabrics are built and covered by Vitest (OSPF adjacencies, BGP sessions, EVPN, NVE, L2/L3 host ping, vPC, ESI DF, Multi-Site). The browser UI, Tauri installers, and GitHub Actions are not in yet.
+The lab runs in the browser, the three example fabrics converge, Vitest is green locally (12 tests), and a Debian package was built and inspected on this machine. Windows NSIS is defined in the release workflow and was not built here (this environment is Linux).
 
 ## Milestones
 
-- [ ] **1. Packaging** — static browser app, Tauri v2 Windows NSIS `.exe` and Debian `.deb`, GitHub Actions (web bundle + installers on `v*` tags). Linux `.deb` build verified.
-- [ ] **2. Topology UI** — drag-and-drop canvas, named interfaces, JSON save/load/export, localStorage. Example fabrics exist in `src/sim/examples.ts` but are not wired to a canvas yet.
-- [ ] **3. NX-OS CLI** — modes, prompts, `?` / tab, abbreviations, `no` forms, feature gating, `show running-config`, `copy run start`, and pipes are implemented in `src/cli/`. Still tightening a few failure-case show results and cleaning the typecheck.
-- [x] **4. Control plane** — interfaces and link state, OSPF (point-to-point and broadcast DR/BDR, LSDB/SPF, ECMP), iBGP route reflection and eBGP (allowas-in, disable-peer-as-check, next-hop unchanged, retain route-target all), EVPN types 1–5 with NX-OS `rd auto` / `route-target auto`, VXLAN NVE peers, anycast gateway, vPC, ESI modulus DF, Multi-Site re-origination, host ping/ARP. Three example fabrics converge in Vitest.
-- [ ] **5. Tests** — `tests/fabric.test.ts` passes locally (clos, 5-stage, multisite). CLI tests are started. CI is not wired yet.
-- [ ] **6. Docs** — `docs/REFERENCES.md` cites the NX-OS 10.x guides used. README, screenshots, and the limitation write-up are still outstanding.
+- [x] **1. Packaging** — Vite static bundle (`npm run build`). Tauri v2 app. Local `.deb` verified: `nxos-evpn-lab_0.1.0_amd64.deb` (Package `nxos-evpn-lab`, Depends `libwebkit2gtk-4.1-0`, `libgtk-3-0`, binary `usr/bin/nxos-evpn-sim`). GitHub Actions: `.github/workflows/ci.yml` (tests, web bundle, `.deb`) and `.github/workflows/release.yml` (tag `v*` attaches web zip, NSIS `.exe`, and `.deb`). Windows installer was not built in this Linux environment.
+- [x] **2. Topology UI** — drag-and-drop canvas, named interfaces, JSON export/import, `localStorage`, and the three example fabrics (clos iBGP, 5-stage eBGP, Multi-Site with vPC and ESI).
+- [x] **3. NX-OS CLI** — modes and prompts, `?`, Tab, abbreviations, `no` forms, feature gating, `show running-config`, `copy run start`, and pipes (`include`, `exclude`, `begin`, `section`, `count`).
+- [x] **4. Control plane** — interface/link state, OSPF, iBGP route reflection and eBGP (allowas-in, disable-peer-as-check, next-hop unchanged, retain route-target all), EVPN types 1–5 with `rd auto` / `route-target auto`, VXLAN NVE, anycast gateway, vPC, ESI modulus DF, Multi-Site re-origination, host ping/ARP.
+- [x] **5. Tests** — `npm test`: OSPF adjacency and shutdown, BGP establishment and AS mismatch, EVPN type 2/3/5 through RRs and eBGP super-spines, NVE peers, anycast-gateway MAC, vPC, ESI DF, multisite re-origination, CLI show parsing. CI runs the same suite.
+- [x] **6. Docs** — README (run, install, command list, limitations, screenshots) and `docs/REFERENCES.md`.
+
+## Verification
+
+- Push to `origin` confirmed with `git ls-remote` (branch `cursor/nxos-evpn-sim-fc9f`).
+- Browser: clos fabric shows **BGP 16/16 Established**. On leaf1, `show bgp l2vpn evpn` lists Route Distinguishers and `show nve peers` lists peers **Up**.
+- `dpkg-deb -I` / `-c` succeeded for `nxos-evpn-lab_0.1.0_amd64.deb`.
+- Not verified here: the Windows NSIS `.exe` (workflow only) and a full `dpkg -i` install on a desktop session (the package control and payload were inspected).
 
 ## Log
 
-- 2026-10-28: Researched NX-OS 10.4/10.5/10.6 VXLAN BGP EVPN, Multi-Site, BGP, and show-command references. Branch `cursor/nxos-evpn-sim-fc9f` opened.
-- 2026-10-28: Control plane and example fabrics are in. Clos iBGP, 5-stage eBGP, and two-site Multi-Site (vPC + ESI) converge with host pings. CLI parser and show formatters are in progress and pushed with this snapshot.
+- 2026-10-28: NX-OS 10.x research. Control plane, CLI, and example fabrics.
+- 2026-10-29: Topology UI, Tauri `.deb` (Rust 1.99; 1.83 cannot build Tauri 2.7), screenshots, README.
