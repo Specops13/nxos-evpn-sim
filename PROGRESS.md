@@ -1,6 +1,6 @@
 # Progress
 
-Overall: **95%** (waiting on the first automatic release)
+Overall: **97%** (release assets built; publish step failed and is being fixed)
 
 The lab runs in the browser, the three example fabrics converge, and Vitest is green locally. Release automation is on this branch: merges to `main` publish the next patch (first release `v0.1.0`), and `cursor/*` pull requests merge themselves after CI and call the release workflow directly so a `GITHUB_TOKEN` merge still produces the release.
 
