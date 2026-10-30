@@ -145,10 +145,61 @@ jobs:
           path: ${{ matrix.paths }}
           if-no-files-found: error
 
+  android:
+    name: Android APK
+    needs: prepare
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK and NDK
+        run: |
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - run: npm ci
+      - name: Select signing keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: bash scripts/android-signing.sh
+      - name: Initialize the Android project
+        run: npx tauri android init --ci --skip-targets-install
+      - name: Build a universal APK
+        run: npx tauri android build --apk --ci
+      - name: Collect the signed APK
+        run: |
+          mkdir -p apk-out
+          find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' ! -name '*unsigned*' -print
+          find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' ! -name '*unsigned*' -exec cp {} apk-out/ \;
+          ls -lh apk-out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: apk-out/*.apk
+          if-no-files-found: error
+
   publish:
     name: Publish GitHub Release
-    needs: [prepare, build]
-    if: needs.prepare.outputs.publish == 'true' && needs.build.result == 'success'
+    needs: [prepare, build, android]
+    if: needs.prepare.outputs.publish == 'true' && needs.build.result == 'success' && needs.android.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -170,7 +221,7 @@ jobs:
         run: |
           set -euo pipefail
           find release-assets -type f -print
-          notes=$(printf 'Automated release of NX-OS EVPN Lab %s.\n\nCommit: %s\n\nAssets: Windows NSIS installer, Debian package, and the static web bundle.' "v${VERSION}" "${SHA}")
+          notes=$(printf 'Automated release of NX-OS EVPN Lab %s.\n\nCommit: %s\n\nAssets: Windows NSIS installer, Debian package, Android APK (sideload; see docs/ANDROID.md), and the static web bundle.' "v${VERSION}" "${SHA}")
           mapfile -t files < <(find release-assets -type f | sort)
           gh release create "v${VERSION}" "${files[@]}" \
             --target "${SHA}" \

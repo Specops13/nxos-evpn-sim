@@ -49,3 +49,59 @@ jobs:
           name: debian-package
           path: src-tauri/target/release/bundle/deb/*.deb
           if-no-files-found: error
+
+  e2e:
+    name: Mobile layout
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mobile-screenshots
+          path: e2e-results
+          if-no-files-found: ignore
+
+  android:
+    name: Android APK
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK and NDK
+        run: |
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - run: npm ci
+      - run: bash scripts/android-signing.sh
+      - run: npx tauri android init --ci --skip-targets-install
+      - run: npx tauri android build --apk --ci
+      - name: Collect the signed APK
+        run: |
+          mkdir -p apk-out
+          find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' ! -name '*unsigned*' -exec cp {} apk-out/ \;
+          ls -lh apk-out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: apk-out/*.apk
+          if-no-files-found: error

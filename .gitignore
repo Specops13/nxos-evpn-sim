@@ -8,3 +8,6 @@ src-tauri/gen/
 *.tsbuildinfo
 .vite/
 coverage/
+e2e-results/
+playwright-report/
+test-results/

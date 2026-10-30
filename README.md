@@ -21,8 +21,9 @@ The lab is stored in `localStorage`. **Export** downloads the same JSON. **Impor
 
 Packaging uses [Tauri](https://v2.tauri.app/) v2. The UI is the same static bundle; the shell is small and does not add a simulation backend.
 
-- Windows: the NSIS installer (`.exe`) from a GitHub Release created by a `v*` tag. Run the installer and launch **NX-OS EVPN Lab**.
+- Windows: the NSIS installer (`.exe`) from a GitHub Release. Run the installer and launch **NX-OS EVPN Lab**.
 - Debian / Ubuntu: the `.deb` from the same release.
+- Android: the universal APK from the same release. It installs on Android 7.0 (API 24) and newer. See [docs/ANDROID.md](docs/ANDROID.md) for the sideload keystore and how to replace it with your own signing key.
 
 ```bash
 sudo dpkg -i nxos-evpn-lab_0.1.0_amd64.deb
@@ -41,7 +42,7 @@ npm run tauri build -- --bundles nsis    # Windows
 
 GitHub Actions (`.github/workflows/ci.yml`) runs the unit tests, builds the web bundle, and builds the `.deb` on every pull request.
 
-Every merge to `main` publishes a GitHub Release. The first one is `v0.1.0` (the version already in the repo). Each later merge bumps the patch (`v0.1.1`, `v0.1.2`, …) and writes that version back to `package.json`, `package-lock.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and `src-tauri/Cargo.lock`. The release attaches the Windows NSIS `.exe`, the Debian `.deb`, and `nxos-evpn-lab-web.zip`. Pull requests from `cursor/*` are squash-merged by `.github/workflows/automerge.yml` after CI succeeds, and that same workflow calls the release workflow directly. A merge made with the Actions token does not emit a `push` event, so waiting for a tag or a main push would never start the release. Pushing a `v*` tag yourself still builds that exact version.
+Every merge to `main` publishes a GitHub Release. The first one is `v0.1.0` (the version already in the repo). Each later merge bumps the patch (`v0.1.1`, `v0.1.2`, …) and writes that version back to `package.json`, `package-lock.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and `src-tauri/Cargo.lock`. The release attaches the Windows NSIS `.exe`, the Debian `.deb`, the Android APK, and `nxos-evpn-lab-web.zip`. Pull requests from `cursor/*` are squash-merged by `.github/workflows/automerge.yml` after CI succeeds, and that same workflow calls the release workflow directly. A merge made with the Actions token does not emit a `push` event, so waiting for a tag or a main push would never start the release. Pushing a `v*` tag yourself still builds that exact version.
 
 ## Example fabrics
 

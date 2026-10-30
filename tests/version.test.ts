@@ -34,7 +34,9 @@ describe('release version', () => {
     const lock = JSON.parse(readFileSync(join(root, 'package-lock.json'), 'utf8'));
     expect(lock.version).toBe('0.1.3');
     expect(lock.packages[''].version).toBe('0.1.3');
-    expect(JSON.parse(readFileSync(join(root, 'src-tauri/tauri.conf.json'), 'utf8')).version).toBe('0.1.3');
+    const tauri = JSON.parse(readFileSync(join(root, 'src-tauri/tauri.conf.json'), 'utf8'));
+    expect(tauri.version).toBe('0.1.3');
+    expect(tauri.bundle.android.versionCode).toBe(1003);
     expect(readFileSync(join(root, 'src-tauri/Cargo.toml'), 'utf8')).toContain('version = "0.1.3"');
     expect(readFileSync(join(root, 'src-tauri/Cargo.toml'), 'utf8')).toContain('version = "2"');
     expect(readFileSync(join(root, 'src-tauri/Cargo.lock'), 'utf8')).toContain('version = "0.1.3"');

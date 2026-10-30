@@ -1,9 +1,25 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { completeLine, execLine, helpFor, newSession, promptOf, type Session } from '../cli/engine';
 import type { Lab } from '../sim/lab';
+
+const QUICK = [
+  'show bgp l2vpn evpn summary',
+  'show nve peers',
+  'show mac address-table',
+  'show ip route vrf TENANT',
+  'show running-config',
+];
+
+interface TermApi {
+  run: (line: string) => void;
+  complete: () => void;
+  help: () => void;
+  history: (dir: 1 | -1) => void;
+  setDraft: (value: string) => void;
+}
 
 export function DeviceTerminal({
   lab,
@@ -17,6 +33,8 @@ export function DeviceTerminal({
   onChange: () => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const api = useRef<TermApi | null>(null);
+  const [draft, setDraft] = useState('');
 
   useEffect(() => {
     const el = hostRef.current;
@@ -77,6 +95,40 @@ export function DeviceTerminal({
       }
       buf = '';
       term.write(prompt());
+    };
+
+    api.current = {
+      run,
+      complete: () => {
+        const res = completeLine(session, buf);
+        if (res.output) {
+          term.write('\r\n');
+          writeBlock(res.output);
+          term.write(prompt() + buf);
+        } else if (res.buffer !== buf) {
+          buf = res.buffer;
+          redraw(buf);
+        }
+        setDraft(buf);
+      },
+      help: () => {
+        const help = helpFor(session, buf + '?');
+        term.write('?\r\n');
+        writeBlock(help);
+        term.write(prompt() + buf);
+      },
+      history: (dir) => {
+        if (!history.length) return;
+        if (dir > 0) hist = Math.min(history.length - 1, hist + 1);
+        else hist = hist <= 0 ? -1 : hist - 1;
+        buf = hist < 0 ? '' : (history[hist] ?? '');
+        redraw(buf);
+        setDraft(buf);
+      },
+      setDraft: (value) => {
+        buf = value;
+        redraw(buf);
+      },
     };
 
     const disp = term.onData((data) => {
@@ -142,11 +194,56 @@ export function DeviceTerminal({
     });
 
     return () => {
+      api.current = null;
       disp.dispose();
       ro.disconnect();
       term.dispose();
     };
   }, [deviceId, lab, onChange, sessions]);
 
-  return <div className="term" ref={hostRef} />;
+  const send = (line: string) => {
+    api.current?.run(line);
+    setDraft('');
+  };
+
+  return (
+    <div className="term-shell">
+      <div className="term" ref={hostRef} data-testid="terminal" />
+      <div className="mobile-cli" data-testid="mobile-cli">
+        <div className="chips">
+          {QUICK.map((cmd) => (
+            <button key={cmd} type="button" className="chip" data-testid={`chip-${cmd.split(' ')[1] ?? 'cmd'}`} onClick={() => send(cmd)}>
+              {cmd}
+            </button>
+          ))}
+        </div>
+        <form
+          className="cmd-row"
+          onSubmit={(e) => {
+            e.preventDefault();
+            send(draft);
+          }}
+        >
+          <button type="button" aria-label="Previous command" onClick={() => api.current?.history(1)}>↑</button>
+          <button type="button" aria-label="Next command" onClick={() => api.current?.history(-1)}>↓</button>
+          <input
+            data-testid="command-input"
+            aria-label="Command"
+            value={draft}
+            enterKeyHint="send"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              api.current?.setDraft(e.target.value);
+            }}
+          />
+          <button type="button" aria-label="Tab complete" data-testid="tab-complete" onClick={() => api.current?.complete()}>Tab</button>
+          <button type="button" aria-label="Help" data-testid="help-button" onClick={() => api.current?.help()}>?</button>
+          <button type="submit" data-testid="send-command">Send</button>
+        </form>
+      </div>
+    </div>
+  );
 }
