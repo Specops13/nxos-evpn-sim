@@ -1,3 +1,5 @@
 /target
 /gen
-android-signing/active.keystore
+android-signing/*.keystore
+android-signing/*.jks
+android-signing/*.p12

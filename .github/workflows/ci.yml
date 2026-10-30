@@ -153,6 +153,7 @@ jobs:
       - name: Harden the Android manifest
         run: bash scripts/android-harden.sh
       - name: Configure release signing
+        id: signing
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -160,19 +161,30 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: bash scripts/android-signing.sh
       - name: Build a universal APK
-        run: npx tauri android build --apk --ci
-      - name: Collect the signed APK
         env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          SIGNED: ${{ steps.signing.outputs.signed }}
+        run: |
+          set -euo pipefail
+          if [ "$SIGNED" = "true" ]; then
+            npx tauri android build --apk --ci
+          else
+            echo "No release keystore on this job. Building a debug APK."
+            npx tauri android build --apk --debug --ci
+          fi
+      - name: Collect the APK
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+          ANDROID_CERT_SHA256: ${{ vars.ANDROID_CERT_SHA256 }}
         run: |
           set -euo pipefail
           mkdir -p apk-out
-          mapfile -t apks < <(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' ! -name '*unsigned*' | sort)
+          if [ "$SIGNED" = "true" ]; then
+            mapfile -t apks < <(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' ! -name '*unsigned*' ! -name '*debug*' | sort)
+          else
+            mapfile -t apks < <(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*debug*.apk' ! -name '*unsigned*' | sort)
+          fi
           if [ "${#apks[@]}" -eq 0 ]; then
-            echo "No signed APK was produced"
+            echo "No APK was produced"
             find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' -print || true
             exit 1
           fi
@@ -186,13 +198,14 @@ jobs:
             chosen="${apks[0]}"
           fi
           cp "$chosen" apk-out/nxos-evpn-lab-android.apk
-          curl -fsSL -o /tmp/v0.1.1.apk -L "https://github.com/Specops13/nxos-evpn-sim/releases/download/v0.1.1/nxos-evpn-lab-android.apk"
-          ANDROID_KEYSTORE_BASE64="${ANDROID_KEYSTORE_BASE64:-}" \
-            ANDROID_KEYSTORE_PASSWORD="${ANDROID_KEYSTORE_PASSWORD:-}" \
-            ANDROID_KEY_ALIAS="${ANDROID_KEY_ALIAS:-}" \
-            ANDROID_KEY_PASSWORD="${ANDROID_KEY_PASSWORD:-}" \
-            bash scripts/android-rotate.sh apk-out/nxos-evpn-lab-android.apk
-          bash scripts/verify-apk.sh apk-out/nxos-evpn-lab-android.apk /tmp/v0.1.1.apk
+          if [ "$SIGNED" = "true" ]; then
+            if ! curl -fsSL -o /tmp/previous.apk -L "https://github.com/Specops13/nxos-evpn-sim/releases/latest/download/nxos-evpn-lab-android.apk"; then
+              curl -fsSL -o /tmp/previous.apk -L "https://github.com/Specops13/nxos-evpn-sim/releases/download/v0.1.1/nxos-evpn-lab-android.apk"
+            fi
+            bash scripts/verify-apk.sh apk-out/nxos-evpn-lab-android.apk /tmp/previous.apk
+          else
+            echo "Debug APK collected. Certificate pin runs only for a release-signed APK."
+          fi
           ls -lh apk-out
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

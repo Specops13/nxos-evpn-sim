@@ -1,8 +1,8 @@
 # Upgrading
 
-The package name, app id, and Android certificate are what make an install upgrade in place. Do not rename `nxos-evpn-lab`, `com.nxosevpn.lab`, or the Windows `productName`.
+The package name, app id, and Android certificate are what make an install upgrade in place. Do not rename `nxos-evpn-lab`, `com.nxosevpn.lab`, or the Windows `productName`. The Android certificate changed when the committed keystore was removed. Installs of v0.1.1 through v0.1.3 do not upgrade in place to a privately signed APK. Export, uninstall, install, then import. Later releases signed with the same private key upgrade in place.
 
-Saved labs use one `localStorage` key, `nxos-evpn-lab-v1`, on every edition. A v0.1.x file is `{ "version": 1, ... }`. This version reads that file, writes the original bytes to `nxos-evpn-lab-v1-backup`, then stores schema 2. A file from a newer schema is not overwritten. Import and `localStorage` are rejected when they are too large, contain `__proto__` / `constructor` / `prototype`, or put control characters or `<` `>` in names. The app version is shown in the header. **Check for updates** compares it with `https://api.github.com/repos/Specops13/nxos-evpn-sim/releases/latest` and ignores older tags. Download links are accepted only for this repository's GitHub Release files over HTTPS. The app does not fetch an installer and execute it.
+Saved labs use one `localStorage` key, `nxos-evpn-lab-v1`, on every edition, plus `nxos-evpn-lab-v1-backup` after a migration. A v0.1.x file is `{ "version": 1, ... }`. This version reads that file, writes the original bytes to the backup key, then stores schema 2. A file from a newer schema is not overwritten. **Export** on the Devices tab (the phone's Devices pane, and the same side pane on a wide screen) downloads `nxos-evpn-saved-labs.json`: the current lab and the backup. **Import** restores both. An older file that is only one lab still imports and does not delete the backup. Import and `localStorage` are rejected when they are too large, contain `__proto__` / `constructor` / `prototype`, or put control characters or `<` `>` in names. A refused import leaves the saved labs where they are. The app version is shown in the header. **Check for updates** compares it with `https://api.github.com/repos/Specops13/nxos-evpn-sim/releases/latest` and ignores older tags. Download links are accepted only for this repository's GitHub Release files over HTTPS. The app does not fetch an installer and execute it.
 
 `SHA256SUMS` on each release lists the SHA-256 of the files. The build jobs also publish GitHub build-provenance attestations.
 
@@ -47,42 +47,74 @@ An AppImage is attached for people who want the Tauri updater on Linux. `latest.
 
 ## Android
 
-Minimum version remains API 24. `versionCode` is `major * 1000000 + minor * 1000 + patch`, so `0.1.1` is `1001` and `0.1.2` is `1002`. CI compares the new APK with the v0.1.1 APK and fails if the code goes backwards or the pinned certificate is missing.
+Minimum version remains API 24. `versionCode` is `major * 1000000 + minor * 1000 + patch`, so `0.1.1` is `1001`, `0.1.2` is `1002`, and `0.1.3` is `1003`. The release compares the new APK with the previous published APK and fails if the code goes backwards. It also fails if `ANDROID_CERT_SHA256` is unset or the APK certificate does not match that variable.
 
-The Tauri updater does not support Android. The phone shows the same release check and a link to the APK. Installing that APK is Android's package installer, which accepts it only when the signing certificate matches.
+The Tauri updater does not support Android. The phone shows the same release check and a link to the APK. After the private key is in use, Android's package installer accepts an upgrade only when the signing certificate is that same key.
 
-### The published key
+### One-time uninstall
 
-v0.1.1 is signed by `src-tauri/android-signing/nxos-evpn-lab-debug.keystore`. That file is in git. Anyone can sign an APK that Android will install over this app. The SHA-256 of that certificate is pinned in `src-tauri/android-signing/expected-cert-sha256.txt`:
+Releases through v0.1.3 used a keystore that was committed in git. That file is no longer in the tree. A new private key cannot upgrade those installs. Before uninstalling:
 
-```text
-af59f0f6b7d05b0e1c9e3506e6ddbae5a1013fc6d13dbf0c2d324bcab7058f6f
+1. Open the app. On a phone, open the **Devices** tab. **Export** saves `nxos-evpn-saved-labs.json` (the current lab and the backup). Copy that file off the device. Desktop and the browser use the same **Export** button.
+2. Uninstall `com.nxosevpn.lab`.
+3. Install the new APK.
+4. Open **Devices** and **Import** the file. The current lab and the backup are restored. If the file is refused, the labs already stored on the device are left in place.
+
+### Private keystore
+
+Generate the keystore yourself. Do not commit it. PKCS12 uses one password for the store and the key. RSA 4096, validity 10000 days or more.
+
+Debian:
+
+```bash
+keytool -genkeypair -v -storetype PKCS12 \
+  -keystore nxos-evpn-lab-release.keystore \
+  -alias nxos-evpn-lab \
+  -keyalg RSA -keysize 4096 -validity 10000 \
+  -storepass 'YOUR_PASSWORD' -keypass 'YOUR_PASSWORD' \
+  -dname 'CN=NX-OS EVPN Lab, OU=Lab, O=Lab, C=US'
+
+base64 -w0 nxos-evpn-lab-release.keystore
+
+keytool -list -v -keystore nxos-evpn-lab-release.keystore \
+  -alias nxos-evpn-lab -storepass 'YOUR_PASSWORD' \
+  | sed -n 's/^[[:space:]]*SHA256: //p' | tr -d ':' | tr 'A-F' 'a-f'
 ```
 
-Gradle always signs with this key, so the v2 signature stays the one v0.1.1 already has.
+Windows PowerShell:
 
-### Rotation when you add a private key
+```powershell
+keytool -genkeypair -v -storetype PKCS12 `
+  -keystore nxos-evpn-lab-release.keystore `
+  -alias nxos-evpn-lab `
+  -keyalg RSA -keysize 4096 -validity 10000 `
+  -storepass 'YOUR_PASSWORD' -keypass 'YOUR_PASSWORD' `
+  -dname 'CN=NX-OS EVPN Lab, OU=Lab, O=Lab, C=US'
 
-If these Actions secrets are set, `scripts/android-rotate.sh` builds a SigningCertificateLineage with `apksigner rotate` and signs again:
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("nxos-evpn-lab-release.keystore"))
+
+$line = keytool -list -v -keystore nxos-evpn-lab-release.keystore -alias nxos-evpn-lab -storepass 'YOUR_PASSWORD' | Select-String -Pattern '^\s*SHA256:'
+($line.ToString() -replace '.*SHA256:\s*','' -replace ':','').ToLower()
+```
+
+Copy the keystore file and the password to an encrypted disk or a password manager that is not git. If that copy is lost, the next key is a different certificate and every phone has to uninstall and reinstall again. Export the labs first.
+
+In **Settings → Secrets and variables → Actions**, add these secrets:
 
 | Secret | Value |
 | --- | --- |
-| `ANDROID_KEYSTORE_BASE64` | `base64 -w0 your.keystore` |
-| `ANDROID_KEYSTORE_PASSWORD` | keystore password |
-| `ANDROID_KEY_ALIAS` | key alias |
-| `ANDROID_KEY_PASSWORD` | key password, if it differs from the store password |
+| `ANDROID_KEYSTORE_BASE64` | The one-line base64 string (`base64 -w0` or the PowerShell command above) |
+| `ANDROID_KEYSTORE_PASSWORD` | The PKCS12 password |
+| `ANDROID_KEY_ALIAS` | The alias, `nxos-evpn-lab` in the command above |
+| `ANDROID_KEY_PASSWORD` | The same password. Required by PKCS12. If the secret is empty, the workflow uses the store password. |
 
-The lineage keeps installed data (`--set-installed-data true`) and sets `--set-rollback false` on the old certificate. `--rotation-min-sdk-version 28` puts the new key in the v3 block used from Android 9. v2 is still the pinned key, which Android 7 and 8 verify.
+Add this repository variable (not a secret). The value is the 64 lowercase hex digits from the `SHA256` line, with the colons removed:
 
-`scripts/android-rotate.sh` runs that `apksigner` sequence when the secrets are present, then checks the certificate Android 7 (API 24) would verify. On build-tools 36.0.0 that check fails: `apksigner verify --min-sdk-version 24` reports the new certificate, and v3 cannot be appended onto the existing v2 block (`V3+ only supports a single signer and cannot be appended`). The script restores the pinned signature and fails the build instead of publishing an APK that v0.1.1 cannot upgrade to. The secrets are therefore not silently ignored and not silently substituted.
+| Variable | Value |
+| --- | --- |
+| `ANDROID_CERT_SHA256` | SHA-256 fingerprint of the release certificate |
 
-What that does and does not close:
-
-- Android 9 and newer can upgrade v0.1.1 to the rotated APK, and `--set-rollback false` tells those versions not to accept a later APK signed only by the published key.
-- Android 7 and 8 do not read v3 rotation. They keep trusting the published key. A person with the keystore in git can still upgrade those installs.
-- Recent `apksigner` defaults to a v3.1 block that only Android 13 and newer use for the rotated key. This script sets the minimum to 28 so Android 9 through 12 are included. Android 7 and 8 are still outside v3.
-
-Replacing the pinned certificate without a lineage fails the build. Shipping only the new key, with no v2 signature from the pinned key, would make current installs refuse the upgrade. That is a one-time uninstall and reinstall. This repository does not do that. Whether to drop the published key later, and accept that reinstall, is a decision for the owner.
+The release workflow runs `scripts/require-android-release.sh` before it chooses a version. Missing secrets or a missing or malformed `ANDROID_CERT_SHA256` fail that step, so no tag is pushed and no APK is signed with a different key. `scripts/verify-apk.sh` fails the Android job again if the built APK's certificate does not match the variable. Fork pull requests still compile a debug APK without these values.
 
 ## Web
 

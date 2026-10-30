@@ -1,16 +1,22 @@
 #!/usr/bin/env bash
-# Confirm a release APK is signed with the pinned lab certificate and that
-# its versionCode did not go backwards.
+# Confirm a release APK is signed with the certificate named by
+# ANDROID_CERT_SHA256, and that versionCode did not go backwards.
+#
+# ANDROID_CERT_SHA256 is a repository Actions variable (not a secret).
+# Colons and surrounding whitespace are ignored. The comparison is lowercase hex.
 #
 # Usage: verify-apk.sh NEW.apk [PREVIOUS.apk]
 set -euo pipefail
-root="$(cd "$(dirname "$0")/.." && pwd)"
 new_apk="${1:?path to the new apk}"
 previous_apk="${2:-}"
-pin_file="$root/src-tauri/android-signing/expected-cert-sha256.txt"
-expected="$(tr -d '[:space:]' < "$pin_file" | tr 'A-F' 'a-f' | tr -d ':')"
+expected="$(printf '%s' "${ANDROID_CERT_SHA256:-}" | tr -d '[:space:]:' | tr 'A-F' 'a-f')"
 if [ -z "$expected" ]; then
-  echo "Pinned certificate fingerprint is empty ($pin_file)" >&2
+  echo "ANDROID_CERT_SHA256 is unset. Refusing to accept this APK." >&2
+  echo "Set the Actions variable to the SHA-256 fingerprint of the release certificate." >&2
+  exit 1
+fi
+if ! printf '%s' "$expected" | grep -Eq '^[0-9a-f]{64}$'; then
+  echo "ANDROID_CERT_SHA256 must be 64 hex characters (colons optional)." >&2
   exit 1
 fi
 
@@ -38,12 +44,10 @@ sdk_of() {
 
 new_certs="$(certs_of "$new_apk")"
 if ! printf '%s\n' "$new_certs" | grep -qx "$expected"; then
-  echo "Android signing certificate changed." >&2
-  echo "  pinned $expected" >&2
+  echo "APK certificate does not match ANDROID_CERT_SHA256." >&2
+  echo "  expected $expected" >&2
   echo "  actual:" >&2
   printf '%s\n' "$new_certs" >&2
-  echo "Refusing to publish an APK that cannot upgrade v0.1.1 in place." >&2
-  echo "See docs/UPGRADING.md before replacing ANDROID_KEYSTORE_* secrets." >&2
   exit 1
 fi
 
@@ -59,20 +63,16 @@ if [ "$min_sdk" != "24" ]; then
 fi
 
 if [ -n "$previous_apk" ]; then
-  prev_certs="$(certs_of "$previous_apk")"
   prev_code="$(code_of "$previous_apk")"
-  while IFS= read -r prev; do
-    [ -n "$prev" ] || continue
-    if ! printf '%s\n' "$new_certs" | grep -qx "$prev"; then
-      echo "New APK dropped a certificate from $previous_apk ($prev)" >&2
-      exit 1
-    fi
-  done <<< "$prev_certs"
+  if [ -z "$prev_code" ]; then
+    echo "Could not read versionCode from $previous_apk" >&2
+    exit 1
+  fi
   if [ "$new_code" -lt "$prev_code" ]; then
     echo "versionCode went from $prev_code to $new_code" >&2
     exit 1
   fi
-  echo "Certificate matches the previous APK. versionCode $prev_code -> $new_code."
+  echo "versionCode $prev_code -> $new_code."
 fi
 
-echo "APK certificate matches the pinned lab key. versionCode $new_code, minSdk $min_sdk."
+echo "APK certificate matches ANDROID_CERT_SHA256. versionCode $new_code, minSdk $min_sdk."

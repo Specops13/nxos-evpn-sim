@@ -36,6 +36,12 @@ describe('android release signing', () => {
       keyPassword: 'slash\\x',
       storeFile: 'k',
     })).toContain('password=line\\nbreak');
+    expect(keystoreProperties({
+      keyAlias: 'a',
+      password: 'a=b#c d',
+      keyPassword: 'key',
+      storeFile: 'k',
+    })).toContain('password=a\\=b\\#c\\ d');
   });
 
   it('inserts the release signing config and leaves a second run unchanged', () => {

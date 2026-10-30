@@ -1,40 +1,78 @@
 #!/usr/bin/env bash
-# Select the Android release keystore and, once `tauri android init` has
-# generated the project, point Gradle at it.
+# Point Gradle at the private release keystore.
 #
 # Gradle does not read TAURI_ANDROID_SIGNING_* variables. Release signing uses
 # src-tauri/gen/android/keystore.properties plus a signingConfig in
 # app/build.gradle.kts (https://v2.tauri.app/distribute/sign/android/).
-# That project is generated into gitignored gen/, so this script must run
-# after init and before `tauri android build`. Running it earlier only
-# selects the key file.
+# That project is generated into gitignored gen/, so this script runs after
+# `tauri android init` and before `tauri android build`.
 #
-# Gradle always signs with the committed lab key so the v2 certificate stays
-# the one that shipped in v0.1.1. A private key in ANDROID_KEYSTORE_* is not
-# applied here. scripts/android-rotate.sh adds it as a v3 rotated signer after
-# the APK exists, and scripts/verify-apk.sh rejects a certificate change that
-# does not still include the pinned lab certificate.
+# There is no keystore in git. Release publishing sets ANDROID_SIGNING_REQUIRED=1
+# and fails when the secrets are missing. Pull-request CI leaves that unset:
+# with no secrets it skips signing so the job can build a debug APK.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
+
+if [ -e "$root/src-tauri/android-signing/nxos-evpn-lab-debug.keystore" ] \
+  || [ -e "$root/src-tauri/android-signing/expected-cert-sha256.txt" ]; then
+  echo "Refusing to sign: a keystore or certificate pin is still committed under src-tauri/android-signing/." >&2
+  echo "Release signing uses only ANDROID_KEYSTORE_* secrets." >&2
+  exit 1
+fi
+
+have_b64=0
+have_pass=0
+have_alias=0
+[ -n "${ANDROID_KEYSTORE_BASE64:-}" ] && have_b64=1
+[ -n "${ANDROID_KEYSTORE_PASSWORD:-}" ] && have_pass=1
+[ -n "${ANDROID_KEY_ALIAS:-}" ] && have_alias=1
+count=$((have_b64 + have_pass + have_alias))
+
+write_output() {
+  if [ -n "${GITHUB_OUTPUT:-}" ]; then
+    echo "$1" >> "$GITHUB_OUTPUT"
+  fi
+}
+
+if [ "$count" -eq 0 ]; then
+  if [ "${ANDROID_SIGNING_REQUIRED:-}" = "1" ]; then
+    echo "Release signing requires ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, and ANDROID_KEY_ALIAS." >&2
+    echo "No keystore is committed, and this build will not fall back to another key." >&2
+    exit 1
+  fi
+  echo "ANDROID_KEYSTORE_* is not set. Skipping release signing so CI can build a debug APK."
+  write_output "signed=false"
+  exit 0
+fi
+
+if [ "$count" -ne 3 ]; then
+  echo "Set ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, and ANDROID_KEY_ALIAS together." >&2
+  echo "A partial set is not a signing key, and there is no committed keystore to fall back to." >&2
+  exit 1
+fi
+
+alias="$ANDROID_KEY_ALIAS"
+store_pass="$ANDROID_KEYSTORE_PASSWORD"
+key_pass="${ANDROID_KEY_PASSWORD:-$ANDROID_KEYSTORE_PASSWORD}"
 out="${ANDROID_KEYSTORE_OUT:-$root/src-tauri/android-signing/active.keystore}"
 mkdir -p "$(dirname "$out")"
-cp "$root/src-tauri/android-signing/nxos-evpn-lab-debug.keystore" "$out"
-alias="nxos-evpn-lab"
-store_pass="nxos-evpn-lab"
-key_pass="nxos-evpn-lab"
-echo "Gradle will sign with the pinned lab keystore so v0.1.1 can upgrade in place."
-
-{
-  echo "TAURI_ANDROID_SIGNING_KEY_PATH=$out"
-  echo "TAURI_ANDROID_SIGNING_KEY_ALIAS=$alias"
-  echo "TAURI_ANDROID_SIGNING_KEY_PASSWORD=$store_pass"
-  echo "TAURI_ANDROID_SIGNING_KEY_ALIAS_PASSWORD=$key_pass"
-} >> "${GITHUB_ENV:-/dev/null}"
+printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$out"
+if [ ! -s "$out" ]; then
+  echo "ANDROID_KEYSTORE_BASE64 decoded to an empty file." >&2
+  rm -f "$out"
+  exit 1
+fi
 
 gradle="$root/src-tauri/gen/android/app/build.gradle.kts"
 if [ ! -f "$gradle" ]; then
-  echo "Keystore selected at $out (alias $alias). Gradle signing is applied after tauri android init."
-  exit 0
+  echo "app/build.gradle.kts does not exist yet. Run tauri android init before scripts/android-signing.sh." >&2
+  exit 1
+fi
+
+if ! keytool -list -keystore "$out" -storepass "$store_pass" -alias "$alias" >/dev/null; then
+  echo "The keystore does not open with ANDROID_KEY_ALIAS and ANDROID_KEYSTORE_PASSWORD." >&2
+  rm -f "$out"
+  exit 1
 fi
 
 cp "$out" "$root/src-tauri/gen/android/app/nxos-release.keystore"
@@ -54,4 +92,5 @@ writeFileSync(process.env.PROPS_PATH, keystoreProperties({
 const gradlePath = process.env.GRADLE_PATH;
 writeFileSync(gradlePath, patchReleaseSigning(readFileSync(gradlePath, "utf8")));
 '
-echo "Wrote $props and the release signingConfig (alias $alias)"
+echo "Release signing is configured for alias ${alias}."
+write_output "signed=true"

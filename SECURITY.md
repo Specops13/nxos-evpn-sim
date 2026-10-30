@@ -33,4 +33,4 @@ On Windows and Linux, **Install update** uses the Tauri v2 updater plugin, which
 
 ## Android signing
 
-`v0.1.1` is signed with the keystore in this repository. Anyone can sign another APK with that key, and Android will treat it as an upgrade. `docs/UPGRADING.md` describes APK Signature Scheme v3 rotation, which activates when `ANDROID_KEYSTORE_*` secrets are set, and the versions of Android where the old key remains trusted.
+Releases through v0.1.3 were signed with a keystore that was committed in the repository. That keystore is no longer in the tree. A published APK is signed only from the `ANDROID_KEYSTORE_*` Actions secrets, and the release fails when those secrets or the `ANDROID_CERT_SHA256` variable are missing. The fingerprint is checked on every release. Because the certificate changed, existing installs must be uninstalled once. See `docs/UPGRADING.md`.

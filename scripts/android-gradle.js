@@ -5,7 +5,8 @@ export function escapePropertiesValue(value) {
     .replace(/\\/g, '\\\\')
     .replace(/\r/g, '\\r')
     .replace(/\n/g, '\\n')
-    .replace(/\t/g, '\\t');
+    .replace(/\t/g, '\\t')
+    .replace(/([#:!= ])/g, '\\$1');
 }
 
 export function keystoreProperties({ keyAlias, password, keyPassword, storeFile }) {

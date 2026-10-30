@@ -44,7 +44,9 @@ describe('update offers', () => {
 
   it('keeps Android versionCode increasing and builds updater metadata from signatures', () => {
     expect(versionCodeFor('0.1.2')).toBeGreaterThan(versionCodeFor('0.1.1'));
+    expect(versionCodeFor('0.1.3')).toBeGreaterThan(versionCodeFor('0.1.2'));
     expect(versionCodeFor('0.1.1')).toBe(1001);
+    expect(versionCodeFor('0.1.3')).toBe(1003);
     expect(platformKey('nxos-evpn-lab_0.1.2_x64-setup.exe.sig')).toBe('windows-x86_64');
     expect(platformKey('nxos-evpn-lab_0.1.2_amd64.AppImage.sig')).toBe('linux-x86_64');
     expect(platformKey('nxos-evpn-lab_0.1.2_amd64.deb.sig')).toBeNull();
