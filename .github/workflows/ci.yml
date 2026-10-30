@@ -112,7 +112,9 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - run: cargo install cargo-audit --locked --version 0.22.2
-      - run: cargo audit --manifest-path src-tauri/Cargo.toml
+      - name: Audit the Tauri crate
+        working-directory: src-tauri
+        run: cargo audit
 
   android:
     name: Android APK
