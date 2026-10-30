@@ -27,6 +27,8 @@ The command prints a public key and writes a private key. Put the public key in 
 | `TAURI_SIGNING_PRIVATE_KEY` | The contents of the private key file, or its path on a self-hosted runner. Never commit this file. |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | The password chosen for the key. Omit the secret only when the key has no password. |
 
+Dependabot does not auto-merge. `@tauri-apps/cli` is ignored so it stays on 2.11.5.
+
 The public key in the app and the private key in Actions have to be a pair. The first release that contains the public key cannot update itself from an older build that has no key. The following signed release can. This agent cannot store Actions secrets.
 
 ## Debian and AppImage

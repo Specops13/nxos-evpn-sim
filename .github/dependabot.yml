@@ -4,6 +4,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # 2.12 generates Android compileSdk 37, which this repo does not build.
+      - dependency-name: "@tauri-apps/cli"
   - package-ecosystem: cargo
     directory: /src-tauri
     schedule:
