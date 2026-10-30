@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EXAMPLES } from '../sim/examples';
 import { Lab } from '../sim/lab';
-import type { Device, Role, TopologyFile } from '../sim/types';
+import { FutureSaveError, LAB_BACKUP_KEY, LAB_STORAGE_KEY, openSavedLab } from '../persist/migrate';
+import type { Device, Role } from '../sim/types';
 import { DeviceTerminal } from './Terminal';
 import type { Session } from '../cli/engine';
 import { distance, fitContent, midpoint, registerPointer, viewAfterPinch, worldPoint, type CanvasView, type Vec } from './canvasMath';
-
-const STORE = 'nxos-evpn-lab-v1';
+import { UpdateBar, useUpdateCheck } from './UpdateNotice';
+import { APP_VERSION } from './version';
 const ROLES: Role[] = ['super-spine', 'spine', 'leaf', 'border-gateway', 'host'];
 
 const ROLE_COLOR: Record<Role, string> = {
@@ -19,17 +20,40 @@ const ROLE_COLOR: Record<Role, string> = {
 
 type Tab = 'topology' | 'cli' | 'devices';
 
-function loadInitial(): Lab {
+function browserSink() {
+  return {
+    backup: (original: string) => {
+      localStorage.setItem(
+        LAB_BACKUP_KEY,
+        JSON.stringify({ backedUpAt: new Date().toISOString(), raw: original }),
+      );
+    },
+    write: (next: string) => localStorage.setItem(LAB_STORAGE_KEY, next),
+  };
+}
+
+function loadInitial(allowPersist: { current: boolean }, note: { current: string }): Lab {
   try {
-    const raw = localStorage.getItem(STORE);
-    if (raw) {
-      const file = JSON.parse(raw) as TopologyFile;
-      const lab = Lab.fromJSON(file);
+    const opened = openSavedLab(localStorage.getItem(LAB_STORAGE_KEY), browserSink(), APP_VERSION);
+    if (opened.unreadable) {
+      allowPersist.current = false;
+      note.current = 'The saved lab could not be read. It was left in place.';
+    } else if (opened.future) {
+      allowPersist.current = false;
+      note.current = 'The saved lab is from a newer version and was left unchanged.';
+      if (opened.document) {
+        const lab = Lab.fromJSON(opened.document, { allowFuture: true });
+        lab.converge(48);
+        return lab;
+      }
+    } else if (opened.document) {
+      const lab = Lab.fromJSON(opened.document);
       lab.converge(48);
       return lab;
     }
   } catch {
-    /* fall through to the built-in clos */
+    allowPersist.current = false;
+    note.current = 'The saved lab could not be read. It was left in place.';
   }
   const lab = EXAMPLES[0].build();
   lab.converge(48);
@@ -72,9 +96,12 @@ function newDeviceId(lab: Lab, role: Role): string {
 }
 
 export function App() {
+  const allowPersist = useRef(true);
+  const saveNote = useRef('');
   const labRef = useRef<Lab | null>(null);
-  if (!labRef.current) labRef.current = loadInitial();
+  if (!labRef.current) labRef.current = loadInitial(allowPersist, saveNote);
   const lab = labRef.current;
+  const updates = useUpdateCheck();
   const sessions = useRef(new Map<string, Session>());
   const [rev, setRev] = useState(0);
   const [selected, setSelected] = useState<string>(lab.devices[0]?.id ?? '');
@@ -97,7 +124,8 @@ export function App() {
   const svgRef = useRef<SVGSVGElement>(null);
 
   const persist = useCallback(() => {
-    localStorage.setItem(STORE, JSON.stringify(lab.toJSON()));
+    if (!allowPersist.current) return;
+    localStorage.setItem(LAB_STORAGE_KEY, JSON.stringify({ ...lab.toJSON(), savedWith: APP_VERSION }));
   }, [lab]);
 
   const bump = useCallback(() => {
@@ -153,7 +181,9 @@ export function App() {
     setSelectedLink(null);
     setLinkFrom(null);
     setPlaceRole(null);
-    localStorage.setItem(STORE, JSON.stringify(next.toJSON()));
+    if (allowPersist.current) {
+      localStorage.setItem(LAB_STORAGE_KEY, JSON.stringify({ ...next.toJSON(), savedWith: APP_VERSION }));
+    }
     setRev((n) => n + 1);
   };
 
@@ -308,7 +338,7 @@ export function App() {
   };
 
   const exportJson = () => {
-    const blob = new Blob([JSON.stringify(lab.toJSON(), null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ ...lab.toJSON(), savedWith: APP_VERSION }, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `${lab.name.replace(/\s+/g, '-').toLowerCase()}.json`;
@@ -318,8 +348,13 @@ export function App() {
 
   const importJson = (file: File) => {
     file.text().then((text) => {
-      const parsed = JSON.parse(text) as TopologyFile;
-      replaceLab(Lab.fromJSON(parsed));
+      try {
+        replaceLab(Lab.fromJSON(JSON.parse(text)));
+      } catch (err) {
+        if (err instanceof FutureSaveError) {
+          window.alert('That file was written by a newer version. It was not imported, and the saved lab was left as it is.');
+        }
+      }
     });
   };
 
@@ -339,10 +374,12 @@ export function App() {
         <div className="brand">
           <strong>NX-OS EVPN Lab</strong>
           <span>BGP EVPN / VXLAN fabric simulator · NX-OS 10.x syntax</span>
+          <em className="app-version" data-testid="app-version">v{APP_VERSION}</em>
         </div>
         <div className="stats">
           {lab.name} · tick <b>{lab.tick}</b> · BGP <b>{established}/{peerTotal}</b> Established
         </div>
+        <UpdateBar updates={updates} />
       </header>
       <aside className="side" data-testid="devices-pane">
         <h2>Examples</h2>
@@ -382,10 +419,17 @@ export function App() {
             />
           </label>
         </div>
+        {saveNote.current && <p className="save-note" data-testid="save-note">{saveNote.current}</p>}
+        <button className="btn" data-testid="check-updates" onClick={() => { void updates.check(true); }}>
+          Check for updates
+        </button>
         <button
           className="btn"
           onClick={() => {
-            localStorage.removeItem(STORE);
+            localStorage.removeItem(LAB_STORAGE_KEY);
+            localStorage.removeItem(LAB_BACKUP_KEY);
+            allowPersist.current = true;
+            saveNote.current = '';
             replaceLab(EXAMPLES[0].build());
           }}
         >

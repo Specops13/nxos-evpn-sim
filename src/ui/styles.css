@@ -31,6 +31,7 @@ button { cursor: pointer; }
 .topbar {
   grid-column: 1 / -1;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 16px;
   padding: 0 16px;
@@ -40,7 +41,27 @@ button { cursor: pointer; }
 .brand { display: flex; flex-direction: column; line-height: 1.15; }
 .brand strong { letter-spacing: 0.02em; }
 .brand span { color: var(--muted); font-size: 12px; }
+.app-version { color: var(--muted); font-size: 11px; font-style: normal; }
 .stats { margin-left: auto; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.update-notice {
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: var(--warn);
+  font-size: 12px;
+  padding-bottom: 6px;
+}
+.update-notice a, .update-notice button {
+  color: var(--text);
+  background: #1c2836;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  text-decoration: none;
+}
+.save-note { color: var(--warn); font-size: 12px; }
 .stats b { color: var(--text); font-weight: 600; }
 
 .side, .cli-pane {
@@ -169,6 +190,8 @@ button { cursor: pointer; }
   }
   .topbar { flex: 0 0 auto; min-height: 48px; padding: 6px 12px; }
   .brand span, .stats { display: none; }
+  .app-version { display: inline; }
+  .update-notice a, .update-notice button { min-height: 44px; display: inline-flex; align-items: center; }
   .side, .canvas-wrap, .cli-pane { display: none; min-height: 0; overflow: auto; border: 0; }
   .app[data-tab="topology"] .canvas-wrap { display: flex; flex: 1; flex-direction: column; }
   .app[data-tab="cli"] .cli-pane { display: flex; flex: 1; flex-direction: column; overflow: hidden; }
