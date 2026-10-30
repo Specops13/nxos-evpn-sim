@@ -325,7 +325,9 @@ jobs:
           '
           (
             cd release-assets
-            find . -type f ! -name '*.sig' ! -name SHA256SUMS -printf '%P\n' | sort | xargs -d '\n' sha256sum > SHA256SUMS
+            find . -type f ! -name '*.sig' ! -name SHA256SUMS -printf '%P\n' | sort | while IFS= read -r rel; do
+              sha256sum "$rel" | awk -v name="$(basename "$rel")" '{print $1 "  " name}'
+            done | sort -k2 > SHA256SUMS
           )
           mapfile -t files < <(find release-assets -type f ! -name '*.sig' | sort)
           gh release create "v${VERSION}" "${files[@]}" \
