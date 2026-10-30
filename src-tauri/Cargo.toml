@@ -1,6 +1,6 @@
 [package]
 name = "nxos-evpn-sim"
-version = "0.1.2"
+version = "0.1.3"
 description = "NX-OS EVPN / VXLAN fabric lab"
 authors = ["NX-OS EVPN Lab"]
 edition = "2021"
