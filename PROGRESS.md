@@ -17,3 +17,4 @@ Overall: **96%** — phone UI is on this branch. The first Android CI run failed
 - 2026-10-29: Topology UI, Tauri desktop packages, automatic releases (`v0.1.0` published).
 - 2026-10-30: Phone layout and Tauri Android APK packaging.
 - 2026-10-30: Android CI failed in `android-actions/setup-android` (`sdkmanager --licenses` exit 1, no SDK packages installed). CI now uses the runner SDK and accepts licenses itself. Signing runs after `tauri android init` and writes `keystore.properties` plus the release `signingConfig`, so the collected APK is signed. Pinch-zoom records pointers that start on a device.
+- 2026-10-30: SDK install and signing succeeded. `tauri android build` then failed with `no library targets found` because the crate was binary-only, and cmdline-tools 12 cannot see `platforms;android-37` (`compileSdk` 37). The crate now has a `cdylib`/`staticlib`, and CI installs a newer cmdline-tools before that platform.
