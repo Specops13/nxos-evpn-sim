@@ -5,6 +5,12 @@ description = "NX-OS EVPN / VXLAN fabric lab"
 authors = ["NX-OS EVPN Lab"]
 edition = "2021"
 
+# Android links this crate as a shared library. The `_lib` suffix keeps the
+# library filename distinct from the desktop binary on Windows.
+[lib]
+name = "nxos_evpn_sim_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

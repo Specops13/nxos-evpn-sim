@@ -49,3 +49,90 @@ jobs:
           name: debian-package
           path: src-tauri/target/release/bundle/deb/*.deb
           if-no-files-found: error
+
+  e2e:
+    name: Mobile layout
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mobile-screenshots
+          path: e2e-results
+          if-no-files-found: ignore
+
+  android:
+    name: Android APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Install Android SDK and NDK
+        run: bash scripts/android-sdk.sh
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - run: npm ci
+      - name: Initialize the Android project
+        run: npx tauri android init --ci --skip-targets-install
+      - name: Require stable compileSdk 36
+        run: |
+          set -euo pipefail
+          if grep -R --include='*.kts' --include='*.gradle' -n -E 'compileSdk = 37|targetSdk = 37|android-37' src-tauri/gen/android; then
+            echo "Generated Android project requests API 37. @tauri-apps/cli must stay on 2.11.x."
+            exit 1
+          fi
+          grep -n -E 'compileSdk|targetSdk|minSdk' src-tauri/gen/android/app/build.gradle.kts
+      - name: Configure release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: bash scripts/android-signing.sh
+      - name: Build a universal APK
+        run: npx tauri android build --apk --ci
+      - name: Collect the signed APK
+        run: |
+          set -euo pipefail
+          mkdir -p apk-out
+          mapfile -t apks < <(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' ! -name '*unsigned*' | sort)
+          if [ "${#apks[@]}" -eq 0 ]; then
+            echo "No signed APK was produced"
+            find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' -print || true
+            exit 1
+          fi
+          chosen=""
+          for f in "${apks[@]}"; do
+            case "$f" in
+              *universal*) chosen="$f" ;;
+            esac
+          done
+          if [ -z "$chosen" ]; then
+            chosen="${apks[0]}"
+          fi
+          cp "$chosen" apk-out/nxos-evpn-lab-android.apk
+          signer="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort | tail -n 1)"
+          "$signer" verify --print-certs apk-out/nxos-evpn-lab-android.apk
+          ls -lh apk-out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: apk-out/*.apk
+          if-no-files-found: error

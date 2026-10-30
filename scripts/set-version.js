@@ -1,6 +1,13 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseSemver } from './next-version.js';
 
+/** Same formula Tauri uses when versionCode is omitted: major * 1_000_000 + minor * 1_000 + patch. */
+export function versionCodeFor(version) {
+  const parsed = parseSemver(version);
+  if (!parsed) throw new Error(`Not a semver version: ${version}`);
+  return parsed.major * 1000000 + parsed.minor * 1000 + parsed.patch;
+}
+
 /** Keep package.json, the npm lockfile, tauri.conf.json, and the Cargo package version in sync. */
 export function setProjectVersion(root, version) {
   if (!parseSemver(version)) throw new Error(`Refusing to write non-semver version: ${version}`);
@@ -19,6 +26,10 @@ export function setProjectVersion(root, version) {
   const tauriPath = `${root}/src-tauri/tauri.conf.json`;
   const tauri = JSON.parse(readFileSync(tauriPath, 'utf8'));
   tauri.version = version;
+  tauri.bundle ??= {};
+  tauri.bundle.android ??= {};
+  tauri.bundle.android.minSdkVersion ??= 24;
+  tauri.bundle.android.versionCode = versionCodeFor(version);
   writeFileSync(tauriPath, `${JSON.stringify(tauri, null, 2)}\n`);
 
   const cargoPath = `${root}/src-tauri/Cargo.toml`;
