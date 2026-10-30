@@ -34,6 +34,33 @@ export function midpoint(a: Vec, b: Vec): Vec {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
+export interface PinchStart {
+  start: CanvasView;
+  startDist: number;
+  startMid: Vec;
+}
+
+/**
+ * Record a pointer in SVG space. A second pointer starts a pinch; the caller
+ * should cancel any one-finger node drag. Used for fingers that land on a
+ * device card as well as fingers that land on empty canvas.
+ */
+export function registerPointer(
+  pointers: Map<number, Vec>,
+  pointerId: number,
+  point: Vec,
+  view: CanvasView,
+): PinchStart | null {
+  pointers.set(pointerId, point);
+  if (pointers.size !== 2) return null;
+  const [a, b] = [...pointers.values()];
+  return {
+    start: view,
+    startDist: distance(a, b),
+    startMid: midpoint(a, b),
+  };
+}
+
 /**
  * Keep the world point that was under the pinch midpoint fixed while the
  * finger distance changes.

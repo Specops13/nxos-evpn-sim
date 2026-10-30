@@ -150,6 +150,7 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.publish == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
         with:
@@ -163,32 +164,44 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
       - name: Install Android SDK and NDK
-        run: |
-          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
-          echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+        run: bash scripts/android-sdk.sh
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
       - run: npm ci
-      - name: Select signing keystore
+      - name: Initialize the Android project
+        run: npx tauri android init --ci --skip-targets-install
+      - name: Configure release signing
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: bash scripts/android-signing.sh
-      - name: Initialize the Android project
-        run: npx tauri android init --ci --skip-targets-install
       - name: Build a universal APK
         run: npx tauri android build --apk --ci
       - name: Collect the signed APK
         run: |
+          set -euo pipefail
           mkdir -p apk-out
-          find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' ! -name '*unsigned*' -print
-          find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' ! -name '*unsigned*' -exec cp {} apk-out/ \;
+          mapfile -t apks < <(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' ! -name '*unsigned*' | sort)
+          if [ "${#apks[@]}" -eq 0 ]; then
+            echo "No signed APK was produced"
+            find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' -print || true
+            exit 1
+          fi
+          chosen=""
+          for f in "${apks[@]}"; do
+            case "$f" in
+              *universal*) chosen="$f" ;;
+            esac
+          done
+          if [ -z "$chosen" ]; then
+            chosen="${apks[0]}"
+          fi
+          cp "$chosen" apk-out/nxos-evpn-lab-android.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs apk-out/nxos-evpn-lab-android.apk
           ls -lh apk-out
       - uses: actions/upload-artifact@v4
         with:

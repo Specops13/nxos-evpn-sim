@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fitContent, viewAfterPinch, worldPoint } from '../src/ui/canvasMath';
+import { fitContent, registerPointer, viewAfterPinch, worldPoint } from '../src/ui/canvasMath';
 
 describe('canvas math', () => {
   it('treats the identity view as the SVG point', () => {
@@ -16,6 +16,17 @@ describe('canvas math', () => {
     const center = worldPoint({ x: 800, y: 450 }, fitted);
     expect(center.x).toBeGreaterThan(100);
     expect(center.x).toBeLessThan(400);
+  });
+
+  it('records a pointer that starts on a device and pinches on the second', () => {
+    const pointers = new Map<number, { x: number; y: number }>();
+    const view = { x: 0, y: 0, scale: 1 };
+    expect(registerPointer(pointers, 1, { x: 40, y: 50 }, view)).toBeNull();
+    expect(pointers.size).toBe(1);
+    const pinch = registerPointer(pointers, 2, { x: 140, y: 50 }, view);
+    expect(pinch?.startDist).toBeCloseTo(100);
+    expect(pinch?.startMid).toEqual({ x: 90, y: 50 });
+    expect(pinch?.start).toBe(view);
   });
 
   it('keeps the pinched world point under the fingers', () => {

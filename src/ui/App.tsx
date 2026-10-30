@@ -4,7 +4,7 @@ import { Lab } from '../sim/lab';
 import type { Device, Role, TopologyFile } from '../sim/types';
 import { DeviceTerminal } from './Terminal';
 import type { Session } from '../cli/engine';
-import { distance, fitContent, midpoint, viewAfterPinch, worldPoint, type CanvasView, type Vec } from './canvasMath';
+import { distance, fitContent, midpoint, registerPointer, viewAfterPinch, worldPoint, type CanvasView, type Vec } from './canvasMath';
 
 const STORE = 'nxos-evpn-lab-v1';
 const ROLES: Role[] = ['super-spine', 'spine', 'leaf', 'border-gateway', 'host'];
@@ -195,12 +195,23 @@ export function App() {
     bump();
   };
 
+  const beginPinch = (e: React.PointerEvent): boolean => {
+    const started = registerPointer(pointers.current, e.pointerId, svgPoint(e), viewRef.current);
+    if (!started) return false;
+    pinch.current = started;
+    panDrag.current = null;
+    drag.current = null;
+    clearLong();
+    return true;
+  };
+
   const onDeviceDown = (e: React.PointerEvent, id: string) => {
     e.stopPropagation();
     if (e.pointerType === 'touch') e.preventDefault();
     setSelected(id);
     setSelectedLink(null);
     moved.current = false;
+    if (beginPinch(e)) return;
     if (linkFrom && linkFrom !== id) {
       const a = lab.device(linkFrom);
       const b = lab.device(id);
@@ -229,19 +240,8 @@ export function App() {
       const hit = (e.target as Element).closest?.('[data-device]');
       if (hit) return;
     }
+    if (beginPinch(e)) return;
     const p = svgPoint(e);
-    pointers.current.set(e.pointerId, p);
-    if (pointers.current.size === 2) {
-      const pts = [...pointers.current.values()];
-      pinch.current = {
-        start: viewRef.current,
-        startDist: distance(pts[0], pts[1]),
-        startMid: midpoint(pts[0], pts[1]),
-      };
-      panDrag.current = null;
-      drag.current = null;
-      return;
-    }
     panDrag.current = e.pointerType === 'touch' ? { last: p, pointerId: e.pointerId } : null;
     moved.current = false;
   };

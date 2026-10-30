@@ -39,7 +39,9 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          deadline=$((SECONDS + 1800))
+          # Four Android Rust targets plus the desktop packages can run well past
+          # half an hour. Leave before the job's own six-hour limit.
+          deadline=$((SECONDS + 10800))
           while [ "$SECONDS" -lt "$deadline" ]; do
             json=$(gh run list --repo "$REPO" --workflow ci.yml --commit "$SHA" --limit 20 --json status,conclusion,databaseId)
             count=$(echo "$json" | jq 'length')
