@@ -9,31 +9,20 @@
 # after init and before `tauri android build`. Running it earlier only
 # selects the key file.
 #
-# Dylan can replace the throwaway keystore by setting these repository secrets
-# (Settings → Secrets and variables → Actions):
-#   ANDROID_KEYSTORE_BASE64   base64 of a .jks or .keystore file
-#   ANDROID_KEYSTORE_PASSWORD
-#   ANDROID_KEY_ALIAS
-#   ANDROID_KEY_PASSWORD
-# When those are unset, CI uses the committed debug keystore in
-# src-tauri/android-signing/. That key is public and is only for sideloading
-# this lab. It is not a Play Store signing key.
+# Gradle always signs with the committed lab key so the v2 certificate stays
+# the one that shipped in v0.1.1. A private key in ANDROID_KEYSTORE_* is not
+# applied here. scripts/android-rotate.sh adds it as a v3 rotated signer after
+# the APK exists, and scripts/verify-apk.sh rejects a certificate change that
+# does not still include the pinned lab certificate.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 out="${ANDROID_KEYSTORE_OUT:-$root/src-tauri/android-signing/active.keystore}"
 mkdir -p "$(dirname "$out")"
-if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
-  printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$out"
-  alias="${ANDROID_KEY_ALIAS:?ANDROID_KEY_ALIAS is required when ANDROID_KEYSTORE_BASE64 is set}"
-  store_pass="${ANDROID_KEYSTORE_PASSWORD:?ANDROID_KEYSTORE_PASSWORD is required}"
-  key_pass="${ANDROID_KEY_PASSWORD:-$store_pass}"
-else
-  cp "$root/src-tauri/android-signing/nxos-evpn-lab-debug.keystore" "$out"
-  alias="nxos-evpn-lab"
-  store_pass="nxos-evpn-lab"
-  key_pass="nxos-evpn-lab"
-  echo "Using the committed throwaway keystore (not for production)."
-fi
+cp "$root/src-tauri/android-signing/nxos-evpn-lab-debug.keystore" "$out"
+alias="nxos-evpn-lab"
+store_pass="nxos-evpn-lab"
+key_pass="nxos-evpn-lab"
+echo "Gradle will sign with the pinned lab keystore so v0.1.1 can upgrade in place."
 
 {
   echo "TAURI_ANDROID_SIGNING_KEY_PATH=$out"

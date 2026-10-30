@@ -15,7 +15,7 @@ npm run dev
 
 Open http://localhost:1420. `npm run dev` serves the Vite app. `npm run build` writes a static bundle to `dist/`, and `npm run preview` serves that bundle. No backend is required.
 
-The lab is stored in `localStorage`. **Export** downloads the same JSON. **Import** loads a file. **Reset saved lab** clears the browser copy and reloads the clos example.
+The lab is stored in `localStorage`. **Export** downloads the same JSON. **Import** loads a file. **Reset saved lab** clears the browser copy and reloads the clos example. A save from v0.1.x is migrated in place and the previous bytes are kept in a backup key. See [docs/UPGRADING.md](docs/UPGRADING.md).
 
 ## Desktop packages
 
@@ -41,6 +41,8 @@ npm run tauri build -- --bundles nsis    # Windows
 ```
 
 GitHub Actions (`.github/workflows/ci.yml`) runs the unit tests, builds the web bundle, and builds the `.deb` on every pull request.
+
+How each package upgrades, and which Actions secrets the Windows updater and Android key rotation need, is in [docs/UPGRADING.md](docs/UPGRADING.md). [SECURITY.md](SECURITY.md) covers the update check, the CSP, and dependency audits.
 
 Every merge to `main` publishes a GitHub Release. The first one is `v0.1.0` (the version already in the repo). Each later merge bumps the patch (`v0.1.1`, `v0.1.2`, …) and writes that version back to `package.json`, `package-lock.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and `src-tauri/Cargo.lock`. The release attaches the Windows NSIS `.exe`, the Debian `.deb`, the Android APK, and `nxos-evpn-lab-web.zip`. Pull requests from `cursor/*` are squash-merged by `.github/workflows/automerge.yml` after CI succeeds, and that same workflow calls the release workflow directly. A merge made with the Actions token does not emit a `push` event, so waiting for a tag or a main push would never start the release. Pushing a `v*` tag yourself still builds that exact version.
 

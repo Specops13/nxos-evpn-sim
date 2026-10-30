@@ -9,7 +9,9 @@ import {
   ifaceAllowsVlan,
   vlanById,
 } from './model';
-import type { Device, DeviceCfg, HostCfg, Link, Role, TopologyFile } from './types';
+import { FutureSaveError, migrateDocument } from '../persist/migrate';
+import { validateLabDocument } from '../persist/validate';
+import type { Device, DeviceCfg, HostCfg, Link, Role } from './types';
 import { stepOspf } from './ospf';
 import { addBgpToRib, exchangeBgp, rebuildBgpTables, stepBgp } from './bgp';
 import { importOverlay, stepEsi, stepNve, stepVpc } from './evpn';
@@ -137,9 +139,9 @@ export class Lab {
     return parts.join('||');
   }
 
-  toJSON(): TopologyFile {
+  toJSON(): Record<string, unknown> {
     return {
-      version: 1,
+      schema: 2,
       name: this.name,
       devices: this.devices.map((d) => ({
         id: d.id,
@@ -159,9 +161,28 @@ export class Lab {
     };
   }
 
-  static fromJSON(file: TopologyFile): Lab {
-    const lab = new Lab(file.name);
-    for (const d of file.devices) {
+  static fromJSON(file: unknown, opts?: { allowFuture?: boolean }): Lab {
+    const migrated = migrateDocument(file);
+    if (migrated.future && !opts?.allowFuture) throw new FutureSaveError();
+    const doc = migrated.document;
+    if (!migrated.future) {
+      const problem = validateLabDocument(doc);
+      if (problem) throw new Error(problem);
+    }
+    const name = typeof doc.name === 'string' ? doc.name : 'lab';
+    const devices = Array.isArray(doc.devices) ? doc.devices : [];
+    const links = Array.isArray(doc.links) ? doc.links : [];
+    const lab = new Lab(name);
+    for (const item of devices) {
+      const d = item as {
+        id: string;
+        role: Role;
+        x: number;
+        y: number;
+        systemMac: string;
+        config: DeviceCfg;
+        host?: HostCfg;
+      };
       const dev = lab.addDevice({
         id: d.id,
         role: d.role,
@@ -173,7 +194,10 @@ export class Lab {
       dev.config = d.config;
       dev.host = d.host;
     }
-    for (const l of file.links) lab.addLink(l.aDevice, l.aIntf, l.bDevice, l.bIntf);
+    for (const item of links) {
+      const l = item as { aDevice: string; aIntf: string; bDevice: string; bIntf: string };
+      lab.addLink(l.aDevice, l.aIntf, l.bDevice, l.bIntf);
+    }
     return lab;
   }
 }

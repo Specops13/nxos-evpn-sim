@@ -1,6 +1,6 @@
 # Progress
 
-Overall: **96%** — phone UI is on this branch. The first Android CI run failed before any package was installed, and the signing script never wrote Gradle's `keystore.properties`. Both are fixed here; the signed APK is attached to the release only after this pull request's CI goes green and auto-merge publishes it.
+Overall: **97%** — in-place upgrades and the security checks in this branch. A saved v0.1.x lab migrates without being deleted. Android stays on the v0.1.1 certificate unless a private key is added through the documented v3 rotation. Windows self-update waits on `TAURI_SIGNING_PRIVATE_KEY`, which is not in the repo.
 
 ## Milestones
 
@@ -18,3 +18,4 @@ Overall: **96%** — phone UI is on this branch. The first Android CI run failed
 - 2026-10-30: Phone layout and Tauri Android APK packaging.
 - 2026-10-30: Android CI failed in `android-actions/setup-android` (`sdkmanager --licenses` exit 1, no SDK packages installed). CI now uses the runner SDK and accepts licenses itself. Signing runs after `tauri android init` and writes `keystore.properties` plus the release `signingConfig`, so the collected APK is signed. Pinch-zoom records pointers that start on a device.
 - 2026-10-30: SDK install and signing succeeded. `tauri android build` then failed with `no library targets found` because the crate was binary-only. The crate now has a `cdylib`/`staticlib`. API 37 is not installed: `@tauri-apps/cli` is pinned to 2.11.5 so the generated project uses compileSdk/targetSdk 36 and AGP 8.11.0. minSdk stays 24.
+- 2026-10-30: Upgrade path for saved labs, Debian, Android certificate pin, and the GitHub release check. Windows updater artifacts are skipped until the minisign secret exists. npm and cargo audits run in CI.

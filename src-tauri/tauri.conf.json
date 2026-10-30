@@ -16,19 +16,29 @@
         "title": "NX-OS EVPN Lab",
         "width": 1440,
         "height": 900,
-        "resizable": true
+        "resizable": true,
+        "devtools": false
       }
     ],
     "security": {
-      "csp": null
+      "freezePrototype": true,
+      "csp": "default-src 'self' customprotocol: asset:; connect-src 'self' ipc: http://ipc.localhost https://ipc.localhost https://api.github.com; img-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'none'",
+      "devCsp": "default-src 'self' customprotocol: asset: http://localhost:1420; connect-src 'self' ipc: http://ipc.localhost https://ipc.localhost http://localhost:1420 ws://localhost:1420 https://api.github.com; img-src 'self' data: blob: http://localhost:1420; style-src 'self' 'unsafe-inline'; script-src 'self' http://localhost:1420; object-src 'none'; base-uri 'self'"
     }
   },
   "bundle": {
     "active": true,
     "targets": [
       "deb",
+      "appimage",
       "nsis"
     ],
+    "createUpdaterArtifacts": false,
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
     "android": {
       "minSdkVersion": 24,
       "versionCode": 1001
@@ -39,5 +49,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": [
+        "https://github.com/Specops13/nxos-evpn-sim/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

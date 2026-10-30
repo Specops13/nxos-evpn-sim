@@ -29,7 +29,7 @@ jobs:
       sha: ${{ steps.meta.outputs.sha }}
       publish: ${{ steps.meta.outputs.publish }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.sha }}
           fetch-depth: 0
@@ -91,16 +91,21 @@ jobs:
     name: ${{ matrix.name }}
     needs: prepare
     if: needs.prepare.outputs.publish == 'true'
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: Debian package
+          - name: Debian package and AppImage
             os: ubuntu-24.04
-            bundles: deb
-            artifact: release-deb
+            bundles: deb,appimage
+            artifact: release-linux
             paths: |
               src-tauri/target/release/bundle/deb/*.deb
+              src-tauri/target/release/bundle/appimage/*.AppImage
           - name: Windows installer
             os: windows-latest
             bundles: nsis
@@ -115,35 +120,63 @@ jobs:
               nxos-evpn-lab-web.zip
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         if: matrix.bundles != 'none'
       - name: Install Tauri Linux dependencies
-        if: matrix.bundles == 'deb'
+        if: matrix.bundles != 'none' && matrix.os == 'ubuntu-24.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2t64
       - run: npm ci
+      - name: Enable updater signatures when the key is configured
+        if: matrix.bundles != 'none'
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: bash scripts/prepare-updater.sh
       - name: Build desktop bundle
         if: matrix.bundles != 'none'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPIMAGE_EXTRACT_AND_RUN: "1"
         run: npx tauri build --bundles ${{ matrix.bundles }}
       - name: Zip the web bundle
         if: matrix.bundles == 'none'
         run: |
           npm run build
           (cd dist && zip -r ../nxos-evpn-lab-web.zip .)
-      - uses: actions/upload-artifact@v4
+      - name: Stage updater signatures
+        if: matrix.bundles != 'none'
+        shell: bash
+        run: |
+          mkdir -p updater-sigs
+          find src-tauri/target/release/bundle -type f -name '*.sig' -exec cp {} updater-sigs/ \;
+          ls -lh updater-sigs || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.paths }}
           if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: matrix.bundles != 'none'
+        with:
+          name: ${{ matrix.artifact }}-sigs
+          path: updater-sigs/*.sig
+          if-no-files-found: ignore
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-path: ${{ matrix.paths }}
 
   android:
     name: Android APK
@@ -151,22 +184,26 @@ jobs:
     if: needs.prepare.outputs.publish == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: 17
       - name: Install Android SDK and NDK
         run: bash scripts/android-sdk.sh
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
       - run: npm ci
@@ -180,6 +217,8 @@ jobs:
             exit 1
           fi
           grep -n -E 'compileSdk|targetSdk|minSdk' src-tauri/gen/android/app/build.gradle.kts
+      - name: Harden the Android manifest
+        run: bash scripts/android-harden.sh
       - name: Configure release signing
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -190,6 +229,11 @@ jobs:
       - name: Build a universal APK
         run: npx tauri android build --apk --ci
       - name: Collect the signed APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           mkdir -p apk-out
@@ -209,14 +253,22 @@ jobs:
             chosen="${apks[0]}"
           fi
           cp "$chosen" apk-out/nxos-evpn-lab-android.apk
-          signer="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort | tail -n 1)"
-          "$signer" verify --print-certs apk-out/nxos-evpn-lab-android.apk
+          curl -fsSL -o /tmp/v0.1.1.apk -L "https://github.com/Specops13/nxos-evpn-sim/releases/download/v0.1.1/nxos-evpn-lab-android.apk"
+          ANDROID_KEYSTORE_BASE64="${ANDROID_KEYSTORE_BASE64:-}" \
+            ANDROID_KEYSTORE_PASSWORD="${ANDROID_KEYSTORE_PASSWORD:-}" \
+            ANDROID_KEY_ALIAS="${ANDROID_KEY_ALIAS:-}" \
+            ANDROID_KEY_PASSWORD="${ANDROID_KEY_PASSWORD:-}" \
+            bash scripts/android-rotate.sh apk-out/nxos-evpn-lab-android.apk
+          bash scripts/verify-apk.sh apk-out/nxos-evpn-lab-android.apk /tmp/v0.1.1.apk
           ls -lh apk-out
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-apk
           path: apk-out/*.apk
           if-no-files-found: error
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-path: apk-out/nxos-evpn-lab-android.apk
 
   publish:
     name: Publish GitHub Release
@@ -224,12 +276,12 @@ jobs:
     if: needs.prepare.outputs.publish == 'true' && needs.build.result == 'success' && needs.android.result == 'success'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: release-*
           path: release-assets
@@ -243,8 +295,39 @@ jobs:
         run: |
           set -euo pipefail
           find release-assets -type f -print
-          notes=$(printf 'Automated release of NX-OS EVPN Lab %s.\n\nCommit: %s\n\nAssets: Windows NSIS installer, Debian package, Android APK (sideload; see docs/ANDROID.md), and the static web bundle.' "v${VERSION}" "${SHA}")
-          mapfile -t files < <(find release-assets -type f | sort)
+          notes=$(printf 'Automated release of NX-OS EVPN Lab %s.\n\nCommit: %s\n\nAssets: Windows NSIS installer, Debian package, AppImage, Android APK (sideload; see docs/ANDROID.md), and the static web bundle.\n\nUpgrades: docs/UPGRADING.md. Windows and AppImage self-update only when latest.json is attached.' "v${VERSION}" "${SHA}")
+          node --input-type=module -e '
+            import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+            import { join } from "node:path";
+            import { buildLatestJson } from "./scripts/latest-json.js";
+            const root = "release-assets";
+            const signatures = [];
+            for (const name of readdirSync(root)) {
+              if (!name.endsWith(".sig")) continue;
+              signatures.push({
+                name: name.slice(0, -4),
+                signature: readFileSync(join(root, name), "utf8"),
+              });
+            }
+            const manifest = buildLatestJson({
+              version: process.env.VERSION,
+              notes: "NX-OS EVPN Lab " + process.env.VERSION,
+              pubDate: new Date().toISOString(),
+              repo: process.env.GH_REPO,
+              signatures,
+            });
+            if (!manifest) {
+              console.log("::warning::No updater signatures were uploaded. latest.json was not published.");
+            } else {
+              writeFileSync(join(root, "latest.json"), JSON.stringify(manifest, null, 2) + "\n");
+              console.log("Wrote latest.json for " + Object.keys(manifest.platforms).join(", "));
+            }
+          '
+          (
+            cd release-assets
+            find . -type f ! -name '*.sig' ! -name SHA256SUMS -printf '%P\n' | sort | xargs -d '\n' sha256sum > SHA256SUMS
+          )
+          mapfile -t files < <(find release-assets -type f ! -name '*.sig' | sort)
           gh release create "v${VERSION}" "${files[@]}" \
             --target "${SHA}" \
             --title "v${VERSION}" \
