@@ -2,7 +2,7 @@
 
 The phone UI is the same web app. Below 768px it uses a single pane and a bottom tab bar (Topology, CLI, Devices). Tauri v2 wraps that UI in an APK.
 
-Minimum Android version is API 24 (Android 7.0), which is Tauri's default `minSdkVersion`. This project does not publish to the Play Store.
+Minimum Android version is API 24 (Android 7.0). `compileSdk` and `targetSdk` are 36, the newest stable platform the GitHub runner's `sdkmanager` installs. `@tauri-apps/cli` is pinned to 2.11.5: 2.12 generates `compileSdk` 37 and Android Gradle Plugin 9.3.1, and API 37 is not a stable `platforms;android-37` package. `minSdkVersion` stays 24. This project does not publish to the Play Store.
 
 ## Sideload signing
 

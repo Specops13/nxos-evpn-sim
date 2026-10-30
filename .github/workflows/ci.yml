@@ -91,6 +91,14 @@ jobs:
       - run: npm ci
       - name: Initialize the Android project
         run: npx tauri android init --ci --skip-targets-install
+      - name: Require stable compileSdk 36
+        run: |
+          set -euo pipefail
+          if grep -R --include='*.kts' --include='*.gradle' -n -E 'compileSdk = 37|targetSdk = 37|android-37' src-tauri/gen/android; then
+            echo "Generated Android project requests API 37. @tauri-apps/cli must stay on 2.11.x."
+            exit 1
+          fi
+          grep -n -E 'compileSdk|targetSdk|minSdk' src-tauri/gen/android/app/build.gradle.kts
       - name: Configure release signing
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}

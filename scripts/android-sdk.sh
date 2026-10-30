@@ -39,48 +39,14 @@ set +o pipefail
 yes | timeout 120 "$sdkmanager" --sdk_root="$sdk_root" --licenses >/tmp/sdk-licenses.log || true
 set -o pipefail
 
+# Stable packages only. platforms;android-36 is in the runner sdkmanager's
+# repository. API 37 is not: Tauri CLI 2.12's template is pinned away from it.
 "$sdkmanager" --sdk_root="$sdk_root" --install \
-  "platforms;android-35" \
   "platforms;android-36" \
-  "build-tools;35.0.0" \
+  "build-tools;36.0.0" \
   "ndk;27.2.12479018"
-
-# Tauri CLI 2.12 generates compileSdk 37. cmdline-tools 12 on the runner
-# reports "Failed to find package platforms;android-37", so replace it with
-# a current sdkmanager before installing that platform.
-if [ ! -d "$sdk_root/platforms/android-37" ]; then
-  upgraded=0
-  tmp="$(mktemp -d)"
-  for build in 16111833 14742923 13114758; do
-    url="https://dl.google.com/android/repository/commandlinetools-linux-${build}_latest.zip"
-    echo "Downloading cmdline-tools $build"
-    if curl -fL --retry 3 --retry-delay 2 -o "$tmp/cmdtools.zip" "$url"; then
-      rm -rf "$sdk_root/cmdline-tools/latest" "$tmp/unpack"
-      mkdir -p "$sdk_root/cmdline-tools" "$tmp/unpack"
-      unzip -q "$tmp/cmdtools.zip" -d "$tmp/unpack"
-      if [ -d "$tmp/unpack/cmdline-tools/bin" ]; then
-        mv "$tmp/unpack/cmdline-tools" "$sdk_root/cmdline-tools/latest"
-        upgraded=1
-        break
-      fi
-      echo "cmdline-tools $build unpacked without bin/sdkmanager" >&2
-    fi
-  done
-  rm -rf "$tmp"
-  if [ "$upgraded" -ne 1 ]; then
-    echo "Could not install a cmdline-tools build that knows platforms;android-37" >&2
-    exit 1
-  fi
-  sdkmanager="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
-  echo "Using sdkmanager at $sdkmanager"
-  "$sdkmanager" --version
-  set +o pipefail
-  yes | timeout 120 "$sdkmanager" --sdk_root="$sdk_root" --licenses >/tmp/sdk-licenses.log || true
-  set -o pipefail
-  "$sdkmanager" --sdk_root="$sdk_root" --install "platforms;android-37" "build-tools;36.0.0"
-fi
-if [ ! -d "$sdk_root/platforms/android-37" ]; then
-  echo "platforms;android-37 is required (Tauri compileSdk 37) and was not installed" >&2
+if [ ! -d "$sdk_root/platforms/android-36" ]; then
+  echo "platforms;android-36 was not installed" >&2
   exit 1
 fi
 
