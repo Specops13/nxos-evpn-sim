@@ -33,7 +33,6 @@
       "appimage",
       "nsis"
     ],
-    "createUpdaterArtifacts": false,
     "windows": {
       "nsis": {
         "installMode": "currentUser"
@@ -49,16 +48,5 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
-  },
-  "plugins": {
-    "updater": {
-      "pubkey": "",
-      "endpoints": [
-        "https://github.com/Specops13/nxos-evpn-sim/releases/latest/download/latest.json"
-      ],
-      "windows": {
-        "installMode": "passive"
-      }
-    }
   }
 }

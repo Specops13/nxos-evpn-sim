@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EXAMPLES } from '../sim/examples';
 import { Lab } from '../sim/lab';
 import { FutureSaveError, LAB_BACKUP_KEY, LAB_STORAGE_KEY, openSavedLab } from '../persist/migrate';
+import { exportSavedLabs, importSavedLabs, type LabStorage } from '../persist/savedLabs';
 import type { Device, Role } from '../sim/types';
 import { DeviceTerminal } from './Terminal';
 import type { Session } from '../cli/engine';
@@ -19,6 +20,14 @@ const ROLE_COLOR: Record<Role, string> = {
 };
 
 type Tab = 'topology' | 'cli' | 'devices';
+
+function browserLabStorage(): LabStorage {
+  return {
+    get: (key) => localStorage.getItem(key),
+    set: (key, value) => localStorage.setItem(key, value),
+    remove: (key) => localStorage.removeItem(key),
+  };
+}
 
 function browserSink() {
   return {
@@ -338,10 +347,15 @@ export function App() {
   };
 
   const exportJson = () => {
-    const blob = new Blob([JSON.stringify({ ...lab.toJSON(), savedWith: APP_VERSION }, null, 2)], { type: 'application/json' });
+    const text = exportSavedLabs(
+      browserLabStorage(),
+      { ...lab.toJSON(), savedWith: APP_VERSION },
+      APP_VERSION,
+    );
+    const blob = new Blob([text], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `${lab.name.replace(/\s+/g, '-').toLowerCase()}.json`;
+    a.download = 'nxos-evpn-saved-labs.json';
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -349,11 +363,17 @@ export function App() {
   const importJson = (file: File) => {
     file.text().then((text) => {
       try {
-        replaceLab(Lab.fromJSON(JSON.parse(text)));
+        const next = importSavedLabs(text, browserLabStorage(), APP_VERSION);
+        allowPersist.current = true;
+        saveNote.current = '';
+        replaceLab(next);
       } catch (err) {
-        if (err instanceof FutureSaveError) {
-          window.alert('That file was written by a newer version. It was not imported, and the saved lab was left as it is.');
-        }
+        const newer = err instanceof FutureSaveError;
+        window.alert(
+          newer
+            ? 'That file was written by a newer version. It was not imported, and the saved labs were left as they are.'
+            : 'That file could not be imported. The saved labs were left as they are.',
+        );
       }
     });
   };
@@ -403,14 +423,16 @@ export function App() {
           <button className="btn" onClick={() => { lab.converge(56); bump(); }}>Converge</button>
           <button className="btn" onClick={() => { lab.step(); bump(); }}>Step</button>
         </div>
+        <h2>Saved labs</h2>
         <div className="row">
-          <button className="btn" onClick={exportJson}>Export</button>
-          <label className="btn" style={{ textAlign: 'center' }}>
+          <button className="btn" data-testid="export-labs" onClick={exportJson}>Export</button>
+          <label className="btn" data-testid="import-labs" style={{ textAlign: 'center' }}>
             Import
             <input
               type="file"
-              accept="application/json"
+              accept="application/json,.json"
               hidden
+              data-testid="import-labs-file"
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) importJson(f);

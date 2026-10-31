@@ -43,7 +43,7 @@ if ! printf '%s\n' "$new_certs" | grep -qx "$expected"; then
   echo "  actual:" >&2
   printf '%s\n' "$new_certs" >&2
   echo "Refusing to publish an APK that cannot upgrade v0.1.1 in place." >&2
-  echo "See docs/UPGRADING.md before replacing ANDROID_KEYSTORE_* secrets." >&2
+  echo "The release APK must stay signed with the committed lab certificate." >&2
   exit 1
 fi
 

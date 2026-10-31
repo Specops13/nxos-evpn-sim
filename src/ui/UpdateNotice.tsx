@@ -1,33 +1,26 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type MouseEvent } from 'react';
 import { APP_VERSION } from './version';
-import { detectPlatform, fetchUpdateOffer, type UpdateOffer, type UpdatePlatform } from './updates';
+import { detectPlatform, fetchUpdateOffer, type UpdateOffer } from './updates';
 
 function inTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
-async function installWithUpdater(): Promise<'installed' | 'none' | 'unavailable'> {
-  try {
-    const updater = await import('@tauri-apps/plugin-updater');
-    const process = await import('@tauri-apps/plugin-process');
-    const update = await updater.check();
-    if (!update) return 'none';
-    await update.downloadAndInstall();
-    await process.relaunch();
-    return 'installed';
-  } catch {
-    return 'unavailable';
+async function openReleaseUrl(url: string) {
+  if (inTauri()) {
+    const { openUrl } = await import('@tauri-apps/plugin-opener');
+    await openUrl(url);
+    return;
   }
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 export function useUpdateCheck() {
   const [offer, setOffer] = useState<UpdateOffer | null>(null);
   const [message, setMessage] = useState('');
-  const [platform, setPlatform] = useState<UpdatePlatform>('web');
 
   const check = useCallback(async (manual: boolean) => {
     const kind = detectPlatform(navigator.userAgent, inTauri());
-    setPlatform(kind);
     try {
       const next = await fetchUpdateOffer(APP_VERSION, kind);
       setOffer(next);
@@ -41,40 +34,32 @@ export function useUpdateCheck() {
     }
   }, []);
 
-  const install = useCallback(async () => {
-    setMessage('Downloading the update…');
-    const result = await installWithUpdater();
-    if (result === 'unavailable') {
-      setMessage('The signed updater is not available. Download the package from the release instead.');
-    } else if (result === 'none') {
-      setMessage('This is the newest signed update.');
-    }
-  }, []);
-
   useEffect(() => {
     void check(false);
   }, [check]);
 
-  return { offer, message, platform, check, install };
+  return { offer, message, check, openReleaseUrl };
 }
 
 export function UpdateBar({ updates }: { updates: ReturnType<typeof useUpdateCheck> }) {
-  const { offer, message, install } = updates;
+  const { offer, message, openReleaseUrl } = updates;
   if (!offer && !message) return null;
+  const open = (url: string) => (event: MouseEvent<HTMLAnchorElement>) => {
+    if (!inTauri()) return;
+    event.preventDefault();
+    void openReleaseUrl(url);
+  };
   return (
     <div className="update-notice" data-testid="update-notice">
       {offer ? (
         <>
           <span>v{offer.latest} is available.</span>
           {offer.downloadUrl && (
-            <a href={offer.downloadUrl} target="_blank" rel="noreferrer">
+            <a href={offer.downloadUrl} target="_blank" rel="noreferrer" onClick={open(offer.downloadUrl)}>
               Download {offer.assetName ?? 'release'}
             </a>
           )}
-          <a href={offer.pageUrl} target="_blank" rel="noreferrer">Release notes</a>
-          {(offer.platform === 'windows' || offer.platform === 'linux') && (
-            <button type="button" onClick={() => { void install(); }}>Install update</button>
-          )}
+          <a href={offer.pageUrl} target="_blank" rel="noreferrer" onClick={open(offer.pageUrl)}>Release notes</a>
         </>
       ) : (
         <span>{message}</span>
