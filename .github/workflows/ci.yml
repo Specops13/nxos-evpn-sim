@@ -22,7 +22,7 @@ jobs:
       - run: npm audit --audit-level=high
       - run: npm test
       - run: npm run build
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: web-bundle
           path: dist
@@ -66,7 +66,7 @@ jobs:
           sudo dpkg -i /tmp/nxos-evpn-lab_0.1.99_amd64.deb
           test "$(dpkg-query -W -f '${Version}' nxos-evpn-lab)" = "0.1.99"
           test -x /usr/bin/nxos-evpn-sim
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-packages
           path: |
@@ -91,7 +91,7 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: mobile-screenshots
@@ -172,7 +172,7 @@ jobs:
           curl -fsSL -o /tmp/v0.1.1.apk -L "https://github.com/Specops13/nxos-evpn-sim/releases/download/v0.1.1/nxos-evpn-lab-android.apk"
           bash scripts/verify-apk.sh apk-out/nxos-evpn-lab-android.apk /tmp/v0.1.1.apk
           ls -lh apk-out
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-apk
           path: apk-out/*.apk
