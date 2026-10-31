@@ -27,10 +27,10 @@ Topology JSON is parsed with a reviver that rejects `__proto__`, `prototype`, an
 
 ## Updates
 
-The in-app check reads only `https://api.github.com/repos/Specops13/nxos-evpn-sim/releases/latest`. Download links are accepted only when they are `https://github.com/Specops13/nxos-evpn-sim/releases/download/vX.Y.Z/<file>`. Older versions are ignored. The app does not download an installer and run it itself.
-
-On Windows and Linux, **Install update** uses the Tauri v2 updater plugin, which verifies a minisign signature before installing. That plugin does not support Android. The updater private key is never committed. Until `TAURI_SIGNING_PRIVATE_KEY` is set and `plugins.updater.pubkey` contains the matching public key, that button cannot install anything and the release omits `latest.json`.
+The in-app check reads only `https://api.github.com/repos/Specops13/nxos-evpn-sim/releases/latest`. Download links are accepted only when they are `https://github.com/Specops13/nxos-evpn-sim/releases/download/vX.Y.Z/<file>`. The release page link has to stay on `https://github.com/Specops13/nxos-evpn-sim/releases`. Older versions are ignored. The desktop and Android shells can open only `https://github.com/Specops13/nxos-evpn-sim/releases/**`. The app does not download an installer and run it itself.
 
 ## Android signing
 
-`v0.1.1` is signed with the keystore in this repository. Anyone can sign another APK with that key, and Android will treat it as an upgrade. `docs/UPGRADING.md` describes APK Signature Scheme v3 rotation, which activates when `ANDROID_KEYSTORE_*` secrets are set, and the versions of Android where the old key remains trusted.
+The Android signing key is public. It lives in this repository at `src-tauri/android-signing/nxos-evpn-lab-debug.keystore`, and the store password is in `scripts/android-signing.sh`. Anyone can sign another APK with that key, and Android will treat it as an upgrade of this app.
+
+That is a known, accepted trade-off for this personal lab tool. There is no private key and nothing to configure in GitHub Actions. CI still refuses to publish an APK whose certificate SHA-256 is not the pinned value in `src-tauri/android-signing/expected-cert-sha256.txt` (`af59f0f6b7d05b0e1c9e3506e6ddbae5a1013fc6d13dbf0c2d324bcab7058f6f`), and `versionCode` cannot go backwards.

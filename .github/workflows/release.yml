@@ -136,18 +136,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2t64
       - run: npm ci
-      - name: Enable updater signatures when the key is configured
-        if: matrix.bundles != 'none'
-        shell: bash
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: bash scripts/prepare-updater.sh
       - name: Build desktop bundle
         if: matrix.bundles != 'none'
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPIMAGE_EXTRACT_AND_RUN: "1"
         run: npx tauri build --bundles ${{ matrix.bundles }}
       - name: Zip the web bundle
@@ -155,24 +146,11 @@ jobs:
         run: |
           npm run build
           (cd dist && zip -r ../nxos-evpn-lab-web.zip .)
-      - name: Stage updater signatures
-        if: matrix.bundles != 'none'
-        shell: bash
-        run: |
-          mkdir -p updater-sigs
-          find src-tauri/target/release/bundle -type f -name '*.sig' -exec cp {} updater-sigs/ \;
-          ls -lh updater-sigs || true
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.paths }}
           if-no-files-found: error
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: matrix.bundles != 'none'
-        with:
-          name: ${{ matrix.artifact }}-sigs
-          path: updater-sigs/*.sig
-          if-no-files-found: ignore
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
@@ -220,20 +198,10 @@ jobs:
       - name: Harden the Android manifest
         run: bash scripts/android-harden.sh
       - name: Configure release signing
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: bash scripts/android-signing.sh
       - name: Build a universal APK
         run: npx tauri android build --apk --ci
       - name: Collect the signed APK
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           mkdir -p apk-out
@@ -254,11 +222,6 @@ jobs:
           fi
           cp "$chosen" apk-out/nxos-evpn-lab-android.apk
           curl -fsSL -o /tmp/v0.1.1.apk -L "https://github.com/Specops13/nxos-evpn-sim/releases/download/v0.1.1/nxos-evpn-lab-android.apk"
-          ANDROID_KEYSTORE_BASE64="${ANDROID_KEYSTORE_BASE64:-}" \
-            ANDROID_KEYSTORE_PASSWORD="${ANDROID_KEYSTORE_PASSWORD:-}" \
-            ANDROID_KEY_ALIAS="${ANDROID_KEY_ALIAS:-}" \
-            ANDROID_KEY_PASSWORD="${ANDROID_KEY_PASSWORD:-}" \
-            bash scripts/android-rotate.sh apk-out/nxos-evpn-lab-android.apk
           bash scripts/verify-apk.sh apk-out/nxos-evpn-lab-android.apk /tmp/v0.1.1.apk
           ls -lh apk-out
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -289,40 +252,12 @@ jobs:
       - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.prepare.outputs.version }}
           SHA: ${{ needs.prepare.outputs.sha }}
         run: |
           set -euo pipefail
           find release-assets -type f -print
-          notes=$(printf 'Automated release of NX-OS EVPN Lab %s.\n\nCommit: %s\n\nAssets: Windows NSIS installer, Debian package, AppImage, Android APK (sideload; see docs/ANDROID.md), and the static web bundle.\n\nUpgrades: docs/UPGRADING.md. Windows and AppImage self-update only when latest.json is attached.' "v${VERSION}" "${SHA}")
-          node --input-type=module -e '
-            import { readdirSync, readFileSync, writeFileSync } from "node:fs";
-            import { join } from "node:path";
-            import { buildLatestJson } from "./scripts/latest-json.js";
-            const root = "release-assets";
-            const signatures = [];
-            for (const name of readdirSync(root)) {
-              if (!name.endsWith(".sig")) continue;
-              signatures.push({
-                name: name.slice(0, -4),
-                signature: readFileSync(join(root, name), "utf8"),
-              });
-            }
-            const manifest = buildLatestJson({
-              version: process.env.VERSION,
-              notes: "NX-OS EVPN Lab " + process.env.VERSION,
-              pubDate: new Date().toISOString(),
-              repo: process.env.GH_REPO,
-              signatures,
-            });
-            if (!manifest) {
-              console.log("::warning::No updater signatures were uploaded. latest.json was not published.");
-            } else {
-              writeFileSync(join(root, "latest.json"), JSON.stringify(manifest, null, 2) + "\n");
-              console.log("Wrote latest.json for " + Object.keys(manifest.platforms).join(", "));
-            }
-          '
+          notes=$(printf 'Automated release of NX-OS EVPN Lab %s.\n\nCommit: %s\n\nAssets: Windows NSIS installer, Debian package, AppImage, Android APK (sideload; see docs/ANDROID.md), and the static web bundle.\n\nUpgrades: docs/UPGRADING.md. The app links to this release and does not install updates by itself.' "v${VERSION}" "${SHA}")
           (
             cd release-assets
             find . -type f ! -name '*.sig' ! -name SHA256SUMS -printf '%P\n' | sort | while IFS= read -r rel; do

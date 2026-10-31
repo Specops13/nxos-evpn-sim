@@ -10,10 +10,8 @@
 # selects the key file.
 #
 # Gradle always signs with the committed lab key so the v2 certificate stays
-# the one that shipped in v0.1.1. A private key in ANDROID_KEYSTORE_* is not
-# applied here. scripts/android-rotate.sh adds it as a v3 rotated signer after
-# the APK exists, and scripts/verify-apk.sh rejects a certificate change that
-# does not still include the pinned lab certificate.
+# the one that shipped in v0.1.1. scripts/verify-apk.sh rejects any other
+# certificate. There is no separate signing secret.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 out="${ANDROID_KEYSTORE_OUT:-$root/src-tauri/android-signing/active.keystore}"
