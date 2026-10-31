@@ -1,6 +1,6 @@
 {
   "name": "nxos-evpn-sim",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "Browser and desktop simulator for Cisco NX-OS BGP EVPN / VXLAN fabrics",
   "type": "module",
